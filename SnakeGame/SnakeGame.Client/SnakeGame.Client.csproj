@@ -23,6 +23,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\MalignEngine\MalignEngine.Client\MalignEngine.Client.csproj" />
+      <ProjectReference Include="..\..\MalignEngine\MalignEngine\MalignEngine.Client\MalignEngine.Client.csproj" />
     </ItemGroup>
 </Project>

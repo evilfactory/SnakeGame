@@ -17,6 +17,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\MalignEngine\MalignEngine.Server\MalignEngine.Server.csproj" />
+      <ProjectReference Include="..\..\MalignEngine\MalignEngine\MalignEngine.Server\MalignEngine.Server.csproj" />
     </ItemGroup>
 </Project>

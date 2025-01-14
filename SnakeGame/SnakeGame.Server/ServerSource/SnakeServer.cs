@@ -54,6 +54,13 @@ public class SnakeServer : EntitySystem
     public void OnMessageReceived(IReadMessage message)
     {
         logger.LogInfo($"Message received from {message.Sender.Id}");
+        // print all bytes
+        string bytes = "";
+        for (int i = 0; i < message.Buffer.Length; i++)
+        {
+            bytes += message.Buffer[i] + " ";
+        }
+        logger.LogInfo(bytes);
 
         byte clientTick = message.ReadByte();
         byte messageCount = message.ReadByte();

@@ -51,3 +51,18 @@ public class HostInfo : NetMessage
         message.WriteCharArray(AgentString);
     }
 }
+
+public class GameConfig : NetMessage
+{
+    public byte TickFrequency;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        TickFrequency = message.ReadByte();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(TickFrequency);
+    }
+}

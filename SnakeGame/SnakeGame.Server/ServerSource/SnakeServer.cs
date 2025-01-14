@@ -42,8 +42,6 @@ public class SnakeServer : EntitySystem
     public void OnClientConnected(NetworkConnection connection)
     {
         logger.LogInfo($"Client connected: {connection.Id}");
-
-        clients.Add(connection);
     }
 
     public void OnClientDisconnected(NetworkConnection connection, DisconnectReason reason)
@@ -67,7 +65,9 @@ public class SnakeServer : EntitySystem
             switch (messageType)
             {
                 case ClientToServer.RequestLobbyInfo:
-                    RequestLobbyInfo(message);
+                    HandleConnecting(message);
+                    break;
+                case ClientToServer.Connecting:
                     break;
             }
         }
@@ -81,17 +81,39 @@ public class SnakeServer : EntitySystem
         SendToClient(message, connection);
     }
 
-    private void RequestLobbyInfo(IReadMessage message)
+    private void HandleRequestLobbyInfo(IReadMessage message)
     {
         WriteOnlyMessage response = new WriteOnlyMessage();
 
         response.WriteByte((byte)clients.Count);
         response.WriteString("拼图是毛茸茸的");
         response.WriteString("这是真的");
-        response.WriteByte(0);
-        response.WriteByte(0);
-        response.WriteString("Evil Snake Server");
+
+        HostInfo hostInfo = new HostInfo
+        {
+            VersionMajor = 9,
+            VersionMinor = 0,
+            AgentString = "Evil Snake Server"
+        };
+
+        hostInfo.Serialize(response);
 
         SendMessageToClient(message.Sender, ServerToClient.LobbyInformation, response);
+    }
+
+    private void HandleConnecting(IReadMessage message)
+    {
+        if (clients.Contains(message.Sender))
+        {
+            return;
+        }
+
+        clients.Add(message.Sender);
+
+        string name = message.ReadString();
+        HostInfo hostInfo = new HostInfo();
+        hostInfo.Deserialize(message);
+
+        logger.LogInfo($"Client {message.Sender.Id} connected with name {name} and agent {hostInfo.AgentString}, snake {hostInfo.VersionMajor}.{hostInfo.VersionMinor}");
     }
 }

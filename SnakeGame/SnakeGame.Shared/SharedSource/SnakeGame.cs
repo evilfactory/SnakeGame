@@ -22,7 +22,7 @@ class SnakeGame : EntitySystem
         AssetService.LoadFolder("Content");
 
 #if SERVER
-        SnakeServer.Listen(8080);
+        SnakeServer.Listen(3007);
 
 #elif CLIENT
         GUIStyle.Default = new GUIStyle()

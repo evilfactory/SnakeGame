@@ -30,3 +30,24 @@ public enum ClientToServer : byte
     RequestRespawn = 5,
     SendChatMessage = 6
 }
+
+public class HostInfo : NetMessage
+{
+    public byte VersionMajor;
+    public byte VersionMinor;
+    public string AgentString;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        VersionMajor = message.ReadByte();
+        VersionMinor = message.ReadByte();
+        AgentString = message.ReadString();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(VersionMajor);
+        message.WriteByte(VersionMinor);
+        message.WriteString(AgentString);
+    }
+}

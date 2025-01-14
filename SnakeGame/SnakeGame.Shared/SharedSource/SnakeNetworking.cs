@@ -41,13 +41,13 @@ public class HostInfo : NetMessage
     {
         VersionMajor = message.ReadByte();
         VersionMinor = message.ReadByte();
-        AgentString = message.ReadString();
+        AgentString = message.ReadCharArray();
     }
 
     public override void Serialize(IWriteMessage message)
     {
         message.WriteByte(VersionMajor);
         message.WriteByte(VersionMinor);
-        message.WriteString(AgentString);
+        message.WriteCharArray(AgentString);
     }
 }

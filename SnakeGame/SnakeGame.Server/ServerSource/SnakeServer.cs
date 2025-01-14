@@ -86,12 +86,12 @@ public class SnakeServer : EntitySystem
         WriteOnlyMessage response = new WriteOnlyMessage();
 
         response.WriteByte((byte)clients.Count);
-        response.WriteString("拼图是毛茸茸的");
-        response.WriteString("这是真的");
+        response.WriteCharArray("Funny lobby");
+        response.WriteCharArray("I fucking hate drainage system. I mean first of all, WATER? Why the fuck is the protagonist, a slugcat, forced to go into water?? This is animal abuse and i will not stand for it. Secondly, THAT ONE FUCKING ROOM. you know the one. i was on my 237th cycle");
 
         HostInfo hostInfo = new HostInfo
         {
-            VersionMajor = 9,
+            VersionMajor = 0,
             VersionMinor = 0,
             AgentString = "Evil Snake Server"
         };
@@ -110,7 +110,7 @@ public class SnakeServer : EntitySystem
 
         clients.Add(message.Sender);
 
-        string name = message.ReadString();
+        string name = message.ReadCharArray();
         HostInfo hostInfo = new HostInfo();
         hostInfo.Deserialize(message);
 

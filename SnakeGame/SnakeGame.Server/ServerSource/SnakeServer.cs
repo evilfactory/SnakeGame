@@ -55,7 +55,7 @@ public class SnakeServer : EntitySystem
     {
         logger.LogVerbose($"Message received from {message.Sender.Id}");
         // print all bytes
-        logger.LogInfo(Convert.ToHexString(message.Buffer));
+        logger.LogVerbose(Convert.ToHexString(message.Buffer));
 
         byte clientTick = message.ReadByte();
         byte messageCount = message.ReadByte();
@@ -67,25 +67,35 @@ public class SnakeServer : EntitySystem
             switch (messageType)
             {
                 case ClientToServer.RequestLobbyInfo:
-                    HandleConnecting(message);
+                    HandleRequestLobbyInfo(message);
                     break;
                 case ClientToServer.Connecting:
+                    HandleConnecting(message);
                     break;
-            }
+                case ClientToServer.FullUpdate:
+                    break;            }
         }
     }
 
-    public void SendMessageToClient(NetworkConnection connection, ServerToClient messageType, IWriteMessage message)
+    public IWriteMessage CreateMessage(ServerToClient messageType)
     {
+        WriteOnlyMessage message = new WriteOnlyMessage();
+
         message.WriteByte(0);
         message.WriteByte(1);
         message.WriteByte((byte)messageType);
+
+        return message;
+    }
+
+    public void SendMessageToClient(NetworkConnection connection, IWriteMessage message)
+    {
         SendToClient(message, connection);
     }
 
     private void HandleRequestLobbyInfo(IReadMessage message)
     {
-        WriteOnlyMessage response = new WriteOnlyMessage();
+        IWriteMessage response = CreateMessage(ServerToClient.LobbyInformation);
 
         response.WriteByte((byte)clients.Count);
         response.WriteCharArray("Funny lobby");
@@ -100,7 +110,9 @@ public class SnakeServer : EntitySystem
 
         hostInfo.Serialize(response);
 
-        SendMessageToClient(message.Sender, ServerToClient.LobbyInformation, response);
+        SendMessageToClient(message.Sender, response);
+
+        logger.LogInfo("Sent lobby information");
     }
 
     private void HandleConnecting(IReadMessage message)
@@ -117,5 +129,14 @@ public class SnakeServer : EntitySystem
         hostInfo.Deserialize(message);
 
         logger.LogInfo($"Client {message.Sender.Id} connected with name {name} and agent {hostInfo.AgentString}, snake {hostInfo.VersionMajor}.{hostInfo.VersionMinor}");
+
+        IWriteMessage gameConfigMessage = CreateMessage(ServerToClient.GameConfig);
+        GameConfig gameConfig = new GameConfig() { TickFrequency = 20 };
+        gameConfig.Serialize(gameConfigMessage);
+        SendMessageToClient(message.Sender, gameConfigMessage);
+
+        IWriteMessage assignPlayerIdMessage = CreateMessage(ServerToClient.AssignPlayerId);
+        assignPlayerIdMessage.WriteByte(message.Sender.Id);
+        SendMessageToClient(message.Sender, assignPlayerIdMessage);
     }
 }

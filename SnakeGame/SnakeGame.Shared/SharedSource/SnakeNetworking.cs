@@ -3,6 +3,14 @@ using System.Net;
 
 namespace SnakeGame;
 
+public enum PlayerInput : byte
+{
+    Up = 0,
+    Right = 1,
+    Down = 2,
+    Left = 3
+}
+
 public enum ServerToClient : byte
 {
     LobbyInformation = 0,
@@ -10,14 +18,13 @@ public enum ServerToClient : byte
     AssignPlayerId = 2,
     BoardReset = 3,
     BoardSet = 4,
-    BoardReplace = 5,
-    PlayerConnected = 6,
-    PlayerDisconnected = 7,
-    PlayerSpawned = 8,
-    PlayerDied = 9,
-    PlayerMoved = 10,
-    RespawnAllowed = 11,
-    ChatMessageSent = 12,
+    PlayerConnected = 5,
+    PlayerDisconnected = 6,
+    PlayerSpawned = 7,
+    PlayerDied = 8,
+    PlayerMoved = 9,
+    RespawnAllowed = 10,
+    ChatMessageSent = 11,
 }
 
 public enum ClientToServer : byte
@@ -29,6 +36,24 @@ public enum ClientToServer : byte
     PlayerInput = 4,
     RequestRespawn = 5,
     SendChatMessage = 6
+}
+
+public class TileData : NetMessage
+{
+    public TileType Resource;
+    public byte AssociatedPlayerId;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        Resource = (TileType)message.ReadByte();
+        AssociatedPlayerId = message.ReadByte();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte((byte)Resource);
+        message.WriteByte(AssociatedPlayerId);
+    }
 }
 
 public class HostInfo : NetMessage

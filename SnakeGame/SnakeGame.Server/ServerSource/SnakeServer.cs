@@ -1,10 +1,13 @@
 ﻿using MalignEngine;
+using Silk.NET.Maths;
 
 namespace SnakeGame;
 
 public class SnakeServer : EntitySystem
 {
     public Transport Transport { get; private set; }
+    public Board Board { get; private set; }
+    public List<Snake> Snakes { get; private set; }
 
     private List<NetworkConnection> clients = new List<NetworkConnection>();
 
@@ -20,6 +23,80 @@ public class SnakeServer : EntitySystem
         Transport.OnClientConnected = OnClientConnected;
         Transport.OnClientDisconnected = OnClientDisconnected;
         Transport.OnMessageReceived = OnMessageReceived;
+
+        Board = new Board(64, 64);
+        Snakes = new List<Snake>();
+    }
+
+    public override void OnUpdate(float deltaTime)
+    {
+        Transport.Update();
+
+        foreach (Snake snake in Snakes)
+        {
+            MoveSnake(snake);
+        }
+    }
+
+    public void SpawnSnake(byte playerId, byte positionX, byte positionY)
+    {
+        Snake snake = new Snake();
+        snake.PlayerId = playerId;
+        snake.Input = new PlayerInput();
+        snake.HeadPosition = new Vector2D<byte>(positionX, positionY);
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX - 1), positionY));
+
+        Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = playerId });
+        Board.SetResource(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
+
+        Snakes.Add(snake);
+    }
+
+    private void MoveSnake(Snake snake)
+    {
+        Vector2D<byte> newHeadPosition = snake.HeadPosition;
+
+        switch (snake.Input)
+        {
+            case PlayerInput.Up:
+                newHeadPosition.Y++;
+                break;
+            case PlayerInput.Down:
+                newHeadPosition.Y--;
+                break;
+            case PlayerInput.Left:
+                newHeadPosition.X--;
+                break;
+            case PlayerInput.Right:
+                newHeadPosition.X++;
+                break;
+        }
+
+        // Check if the new head position is out of bounds and teleport the snake to the other side of the board
+        if (newHeadPosition.X < 0)
+        {
+            newHeadPosition.X = (byte)(Board.Width - 1);
+        }
+        else if (newHeadPosition.X >= Board.Width)
+        {
+            newHeadPosition.X = 0;
+        }
+
+        snake.BodyPositions.Insert(0, snake.HeadPosition);
+        snake.HeadPosition = newHeadPosition;
+
+        Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = snake.PlayerId });
+        Board.SetResource(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = snake.PlayerId });
+
+        SendBoardMessage(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = snake.PlayerId });
+        SendBoardMessage(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = snake.PlayerId });
+
+
+        int indexToRemove = snake.BodyPositions.Count - 1;
+        Board.SetResource(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
+        snake.BodyPositions.RemoveAt(indexToRemove);
+
+        SendBoardMessage(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
     }
 
     public void Listen(int port)
@@ -72,8 +149,20 @@ public class SnakeServer : EntitySystem
                 case ClientToServer.Connecting:
                     HandleConnecting(message);
                     break;
+                case ClientToServer.Disconnecting:
+                    break;
                 case ClientToServer.FullUpdate:
-                    break;            }
+                    HandleFullUpdate(message);
+                    break;
+                case ClientToServer.PlayerInput:
+                    HandlePlayerInput(message);
+                    break;
+                case ClientToServer.RequestRespawn:
+                    HandleRequestRespawn(message);
+                    break;
+                case ClientToServer.SendChatMessage:
+                    break;
+            }
         }
     }
 
@@ -91,6 +180,24 @@ public class SnakeServer : EntitySystem
     public void SendMessageToClient(NetworkConnection connection, IWriteMessage message)
     {
         SendToClient(message, connection);
+    }
+
+    public void SendBoardMessage(byte x, byte y, Tile tile)
+    {
+        IWriteMessage boardSetMessage = CreateMessage(ServerToClient.BoardSet);
+
+        TileData cellData = new TileData
+        {
+            Resource = tile.Type,
+            AssociatedPlayerId = tile.PlayerId
+        };
+
+        cellData.Serialize(boardSetMessage);
+
+        foreach (NetworkConnection client in clients)
+        {
+            SendMessageToClient(client, boardSetMessage);
+        }
     }
 
     private void HandleRequestLobbyInfo(IReadMessage message)
@@ -131,12 +238,90 @@ public class SnakeServer : EntitySystem
         logger.LogInfo($"Client {message.Sender.Id} connected with name {name} and agent {hostInfo.AgentString}, snake {hostInfo.VersionMajor}.{hostInfo.VersionMinor}");
 
         IWriteMessage gameConfigMessage = CreateMessage(ServerToClient.GameConfig);
-        GameConfig gameConfig = new GameConfig() { TickFrequency = 20 };
+        GameConfig gameConfig = new GameConfig() { TickFrequency = 60 };
         gameConfig.Serialize(gameConfigMessage);
         SendMessageToClient(message.Sender, gameConfigMessage);
 
         IWriteMessage assignPlayerIdMessage = CreateMessage(ServerToClient.AssignPlayerId);
         assignPlayerIdMessage.WriteByte(message.Sender.Id);
         SendMessageToClient(message.Sender, assignPlayerIdMessage);
+    }
+
+    private void HandleFullUpdate(IReadMessage message)
+    {
+        IWriteMessage boardResetMessage = CreateMessage(ServerToClient.BoardReset);
+        boardResetMessage.WriteByte(Board.Width);
+        boardResetMessage.WriteByte(Board.Height);
+
+        // Board Set
+        for (byte x = 0; x < Board.Width; x++)
+        {
+            for (byte y = 0; y < Board.Height; y++)
+            {
+                IWriteMessage boardSetMessage = CreateMessage(ServerToClient.BoardSet);
+
+                Tile tile = Board.GetResource(x, y);
+
+                TileData cellData = new TileData
+                {
+                    Resource = tile.Type,
+                    AssociatedPlayerId = tile.PlayerId
+                };
+
+                cellData.Serialize(boardSetMessage);
+
+                SendMessageToClient(message.Sender, boardSetMessage);
+            }
+        }
+
+        // PlayerConnected
+        IWriteMessage playerConnectedMessage = CreateMessage(ServerToClient.PlayerConnected);
+        playerConnectedMessage.WriteByte(message.Sender.Id);
+        playerConnectedMessage.WriteCharArray($"Player {message.Sender.Id}");
+
+        foreach (NetworkConnection client in clients)
+        {
+            SendMessageToClient(client, playerConnectedMessage);
+        }
+
+        // PlayerSpawned
+        foreach (Snake snake in Snakes)
+        {
+            IWriteMessage playerSpawnedMessage = CreateMessage(ServerToClient.PlayerSpawned);
+            playerSpawnedMessage.WriteByte(snake.PlayerId);
+            SendMessageToClient(message.Sender, playerSpawnedMessage);
+        }
+
+        // RespawnAllowed
+        IWriteMessage respawnAllowedMessage = CreateMessage(ServerToClient.RespawnAllowed);
+        SendMessageToClient(message.Sender, respawnAllowedMessage);
+    }
+
+    private void HandleRequestRespawn(IReadMessage message)
+    {
+        // Check if snake is already in the game
+        if (Snakes.Any(snake => snake.PlayerId == message.Sender.Id))
+        {
+            return;
+        }
+
+        SpawnSnake(message.Sender.Id, 25, 25);
+
+        IWriteMessage playerSpawnedMessage = CreateMessage(ServerToClient.PlayerSpawned);
+        playerSpawnedMessage.WriteByte(message.Sender.Id);
+        SendMessageToClient(message.Sender, playerSpawnedMessage);
+    }
+
+    private void HandlePlayerInput(IReadMessage message)
+    {
+        byte input = message.ReadByte();
+
+        if (input > 4) { return; }
+
+        Snake? snake = Snakes.Find(snake => snake.PlayerId == message.Sender.Id);
+
+        if (snake == null) { return; }
+
+        snake.Input = (PlayerInput)input;
     }
 }

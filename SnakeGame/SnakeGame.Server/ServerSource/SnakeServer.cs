@@ -141,6 +141,8 @@ public class SnakeServer : EntitySystem
         {
             ClientToServer messageType = (ClientToServer)message.ReadByte();
 
+            ushort skipBytes = message.ReadUInt16();
+
             switch (messageType)
             {
                 case ClientToServer.RequestLobbyInfo:

@@ -135,35 +135,39 @@ public class SnakeServer : EntitySystem
         logger.LogVerbose(Convert.ToHexString(message.Buffer));
 
         byte clientTick = message.ReadByte();
-        byte messageCount = message.ReadByte();
+        byte groupCount = message.ReadByte();
 
-        for (int i = 0; i < messageCount; i++)
+        for (int i = 0; i < groupCount; i++)
         {
             ClientToServer messageType = (ClientToServer)message.ReadByte();
 
+            byte messageCount = message.ReadByte();
             ushort skipBytes = message.ReadUInt16();
 
-            switch (messageType)
+            for (int j = 0; j < messageCount; j++)
             {
-                case ClientToServer.RequestLobbyInfo:
-                    HandleRequestLobbyInfo(message);
-                    break;
-                case ClientToServer.Connecting:
-                    HandleConnecting(message);
-                    break;
-                case ClientToServer.Disconnecting:
-                    break;
-                case ClientToServer.FullUpdate:
-                    HandleFullUpdate(message);
-                    break;
-                case ClientToServer.PlayerInput:
-                    HandlePlayerInput(message);
-                    break;
-                case ClientToServer.RequestRespawn:
-                    HandleRequestRespawn(message);
-                    break;
-                case ClientToServer.SendChatMessage:
-                    break;
+                switch (messageType)
+                {
+                    case ClientToServer.RequestLobbyInfo:
+                        HandleRequestLobbyInfo(message);
+                        break;
+                    case ClientToServer.Connecting:
+                        HandleConnecting(message);
+                        break;
+                    case ClientToServer.Disconnecting:
+                        break;
+                    case ClientToServer.FullUpdate:
+                        HandleFullUpdate(message);
+                        break;
+                    case ClientToServer.PlayerInput:
+                        HandlePlayerInput(message);
+                        break;
+                    case ClientToServer.RequestRespawn:
+                        HandleRequestRespawn(message);
+                        break;
+                    case ClientToServer.SendChatMessage:
+                        break;
+                }
             }
         }
     }
@@ -175,6 +179,7 @@ public class SnakeServer : EntitySystem
         message.WriteByte(0);
         message.WriteByte(1);
         message.WriteByte((byte)messageType);
+        message.WriteByte(1);
         message.WriteUInt16(0);
 
         return message;

@@ -94,9 +94,8 @@ public class SnakeServer : EntitySystem
 
         int indexToRemove = snake.BodyPositions.Count - 1;
         Board.SetResource(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-        snake.BodyPositions.RemoveAt(indexToRemove);
-
         SendBoardMessage(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
+        snake.BodyPositions.RemoveAt(indexToRemove);
     }
 
     public void Listen(int port)

@@ -268,6 +268,7 @@ public class SnakeServer : EntitySystem
         IWriteMessage boardResetMessage = CreateMessage(ServerToClient.BoardReset);
         boardResetMessage.WriteByte(Board.Width);
         boardResetMessage.WriteByte(Board.Height);
+        SendMessageToClient(message.Sender, boardResetMessage);
 
         // Board Set
         for (byte x = 0; x < Board.Width; x++)

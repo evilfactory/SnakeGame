@@ -175,6 +175,7 @@ public class SnakeServer : EntitySystem
         message.WriteByte(0);
         message.WriteByte(1);
         message.WriteByte((byte)messageType);
+        message.WriteUInt16(0);
 
         return message;
     }

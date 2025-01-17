@@ -261,6 +261,15 @@ public class SnakeServer : EntitySystem
         IWriteMessage assignPlayerIdMessage = CreateMessage(ServerToClient.AssignPlayerId);
         assignPlayerIdMessage.WriteByte(message.Sender.Id);
         SendMessageToClient(message.Sender, assignPlayerIdMessage);
+
+        IWriteMessage playerConnectedMessage = CreateMessage(ServerToClient.PlayerConnected);
+        playerConnectedMessage.WriteByte(message.Sender.Id);
+        playerConnectedMessage.WriteCharArray($"Player {message.Sender.Id}");
+        
+        foreach (NetworkConnection client in clients)
+        {
+            SendMessageToClient(client, playerConnectedMessage);
+        }
     }
 
     private void HandleFullUpdate(IReadMessage message)
@@ -294,14 +303,14 @@ public class SnakeServer : EntitySystem
         }
 
         // PlayerConnected
-        IWriteMessage playerConnectedMessage = CreateMessage(ServerToClient.PlayerConnected);
-        playerConnectedMessage.WriteByte(message.Sender.Id);
-        playerConnectedMessage.WriteCharArray($"Player {message.Sender.Id}");
-
         foreach (NetworkConnection client in clients)
         {
-            SendMessageToClient(client, playerConnectedMessage);
+            IWriteMessage playerConnectedMessage = CreateMessage(ServerToClient.PlayerConnected);
+            playerConnectedMessage.WriteByte(client.Id);
+            playerConnectedMessage.WriteCharArray($"Player {client.Id}");
+            SendMessageToClient(message.Sender, playerConnectedMessage);
         }
+
 
         // PlayerSpawned
         foreach (Snake snake in Snakes)

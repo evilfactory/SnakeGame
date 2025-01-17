@@ -262,6 +262,8 @@ public class SnakeServer : EntitySystem
 
                 Tile tile = Board.GetResource(x, y);
 
+                if (tile.Type == TileType.Empty) { continue; }
+
                 TileData cellData = new TileData
                 {
                     Resource = tile.Type,
@@ -295,6 +297,8 @@ public class SnakeServer : EntitySystem
         // RespawnAllowed
         IWriteMessage respawnAllowedMessage = CreateMessage(ServerToClient.RespawnAllowed);
         SendMessageToClient(message.Sender, respawnAllowedMessage);
+
+        logger.LogInfo($"Sent full update to {message.Sender}");
     }
 
     private void HandleRequestRespawn(IReadMessage message)
@@ -310,6 +314,8 @@ public class SnakeServer : EntitySystem
         IWriteMessage playerSpawnedMessage = CreateMessage(ServerToClient.PlayerSpawned);
         playerSpawnedMessage.WriteByte(message.Sender.Id);
         SendMessageToClient(message.Sender, playerSpawnedMessage);
+
+        logger.LogInfo($"Spawned snake for client {message.Sender}");
     }
 
     private void HandlePlayerInput(IReadMessage message)

@@ -82,6 +82,15 @@ public class SnakeServer : EntitySystem
             newHeadPosition.X = 0;
         }
 
+        if (newHeadPosition.Y < 0)
+        {
+            newHeadPosition.Y = (byte)(Board.Height - 1);
+        }
+        else if (newHeadPosition.Y >= Board.Height)
+        {
+            newHeadPosition.Y = 0;
+        }
+
         snake.BodyPositions.Insert(0, snake.HeadPosition);
         snake.HeadPosition = newHeadPosition;
 

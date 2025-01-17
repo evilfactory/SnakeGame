@@ -82,10 +82,13 @@ public class SnakeServer : EntitySystem
                 }
             }
 
-            packet.WriteByte(groupCount);
-            packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
+            if (groupCount > 0)
+            {
+                packet.WriteByte(groupCount);
+                packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
 
-            Transport.SendToClient(packet, connection);
+                Transport.SendToClient(packet, connection);
+            }
         }
 
 

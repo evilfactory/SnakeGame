@@ -144,7 +144,7 @@ public class SnakeServer : EntitySystem
             byte messageCount = message.ReadByte();
             ushort skipBytes = message.ReadUInt16();
 
-            for (int j = 0; j < messageCount; j++)
+            for (int j = 0; j < messageCount + 1; j++)
             {
                 switch (messageType)
                 {

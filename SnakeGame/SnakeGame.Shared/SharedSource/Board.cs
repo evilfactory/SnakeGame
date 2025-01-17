@@ -41,7 +41,7 @@ public class Board
 
     public Tile GetResource(byte x, byte y)
     {
-        return grid[x, y];
+        return grid[x, y] ?? new Tile() { PlayerId = 0, Type = TileType.Empty };
     }
 }
 

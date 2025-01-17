@@ -5,11 +5,18 @@ namespace SnakeGame;
 
 public class SnakeServer : EntitySystem
 {
+    private class QueuedSendMessage
+    {
+        public IWriteMessage Message { get; set; }
+    }
+
     public Transport Transport { get; private set; }
     public Board Board { get; private set; }
     public List<Snake> Snakes { get; private set; }
 
     private List<NetworkConnection> clients = new List<NetworkConnection>();
+
+    private Dictionary<NetworkConnection, Dictionary<ServerToClient, Queue<QueuedSendMessage>>> queuedSendMessages = new Dictionary<NetworkConnection, Dictionary<ServerToClient, Queue<QueuedSendMessage>>>();
 
     protected ILogger logger;
 
@@ -31,6 +38,56 @@ public class SnakeServer : EntitySystem
     public override void OnUpdate(float deltaTime)
     {
         Transport.Update();
+
+        foreach ((NetworkConnection connection, Dictionary<ServerToClient, Queue<QueuedSendMessage>> sendMessages) in queuedSendMessages)
+        {
+            WriteOnlyMessage packet = new WriteOnlyMessage();
+            packet.WriteByte(0);
+
+            byte groupCount = 0;
+
+            WriteOnlyMessage allGroupData = new WriteOnlyMessage();
+
+            foreach ((ServerToClient type, Queue<QueuedSendMessage> queue) in sendMessages)
+            {
+                if (queue.Count == 0)
+                {
+                    continue;
+                }
+
+                WriteOnlyMessage groupData = new WriteOnlyMessage();
+                byte amount = 0;
+
+                while (queue.Count > 0)
+                {
+                    QueuedSendMessage queuedMessage = queue.Dequeue();
+
+                    // Do we have enough space to write this message?
+                    if (packet.LengthBytes + groupData.LengthBytes + allGroupData.LengthBytes + queuedMessage.Message.LengthBytes > 1024)
+                    {
+                        break;
+                    }
+
+                    groupData.WriteBytes(queuedMessage.Message.Buffer, 0, queuedMessage.Message.LengthBytes);
+                    amount++;
+                }
+
+                if (amount > 0)
+                {
+                    groupCount++;
+                    allGroupData.WriteByte((byte)type);
+                    allGroupData.WriteByte(amount);
+                    allGroupData.WriteUInt16((UInt16)groupData.LengthBytes);
+                    allGroupData.WriteBytes(groupData.Buffer, 0, groupData.LengthBytes);
+                }
+            }
+
+            packet.WriteByte(groupCount);
+            packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
+
+            Transport.SendToClient(packet, connection);
+        }
+
 
         foreach (Snake snake in Snakes)
         {
@@ -109,6 +166,7 @@ public class SnakeServer : EntitySystem
 
     public void Listen(int port)
     {
+        queuedSendMessages.Clear();
         Transport.Listen(port);
 
         logger.LogInfo($"Listening on port {port}");
@@ -119,9 +177,25 @@ public class SnakeServer : EntitySystem
         Transport.Shutdown();
     }
 
-    public void SendToClient(IWriteMessage message, NetworkConnection connection, PacketChannel packetChannel = PacketChannel.Reliable)
+    public void SendToClient(IWriteMessage message, ServerToClient type, NetworkConnection connection)
     {
-        Transport.SendToClient(message, connection, packetChannel);
+        if (connection.IsInvalid)
+        {
+            logger.LogWarning($"Tried to send message to invalid connection {connection}");
+            return;
+        }
+
+        if (!queuedSendMessages.ContainsKey(connection))
+        {
+            queuedSendMessages[connection] = new Dictionary<ServerToClient, Queue<QueuedSendMessage>>();
+        }
+
+        if (!queuedSendMessages[connection].ContainsKey(type))
+        {
+            queuedSendMessages[connection][type] = new Queue<QueuedSendMessage>();
+        }
+
+        queuedSendMessages[connection][type].Enqueue(new QueuedSendMessage { Message = message });
     }
 
     public void OnClientConnected(NetworkConnection connection)
@@ -133,6 +207,7 @@ public class SnakeServer : EntitySystem
     {
         logger.LogInfo($"Client disconnected: {connection.Id}");
 
+        queuedSendMessages.Remove(connection);
         clients.Remove(connection);
     }
 
@@ -181,27 +256,9 @@ public class SnakeServer : EntitySystem
         }
     }
 
-    public IWriteMessage CreateMessage(ServerToClient messageType)
-    {
-        WriteOnlyMessage message = new WriteOnlyMessage();
-
-        message.WriteByte(0);
-        message.WriteByte(1);
-        message.WriteByte((byte)messageType);
-        message.WriteByte(0);
-        message.WriteUInt16(0);
-
-        return message;
-    }
-
-    public void SendMessageToClient(NetworkConnection connection, IWriteMessage message)
-    {
-        SendToClient(message, connection);
-    }
-
     public void SendBoardMessage(byte x, byte y, Tile tile)
     {
-        IWriteMessage boardSetMessage = CreateMessage(ServerToClient.BoardSet);
+        IWriteMessage boardSetMessage = new WriteOnlyMessage();
 
         TileData cellData = new TileData
         {
@@ -213,13 +270,13 @@ public class SnakeServer : EntitySystem
 
         foreach (NetworkConnection client in clients)
         {
-            SendMessageToClient(client, boardSetMessage);
+            SendToClient(boardSetMessage, ServerToClient.BoardSet, client);
         }
     }
 
     private void HandleRequestLobbyInfo(IReadMessage message)
     {
-        IWriteMessage response = CreateMessage(ServerToClient.LobbyInformation);
+        IWriteMessage response = new WriteOnlyMessage();
 
         response.WriteByte((byte)clients.Count);
         response.WriteCharArray("Funny lobby");
@@ -234,7 +291,7 @@ public class SnakeServer : EntitySystem
 
         hostInfo.Serialize(response);
 
-        SendMessageToClient(message.Sender, response);
+        SendToClient(response, ServerToClient.LobbyInformation, message.Sender);
 
         logger.LogInfo("Sent lobby information");
     }
@@ -254,38 +311,38 @@ public class SnakeServer : EntitySystem
 
         logger.LogInfo($"Client {message.Sender.Id} connected with name {name} and agent {hostInfo.AgentString}, snake {hostInfo.VersionMajor}.{hostInfo.VersionMinor}");
 
-        IWriteMessage gameConfigMessage = CreateMessage(ServerToClient.GameConfig);
+        IWriteMessage gameConfigMessage = new WriteOnlyMessage();
         GameConfig gameConfig = new GameConfig() { TickFrequency = 60 };
         gameConfig.Serialize(gameConfigMessage);
-        SendMessageToClient(message.Sender, gameConfigMessage);
+        SendToClient(gameConfigMessage, ServerToClient.GameConfig, message.Sender);
 
-        IWriteMessage assignPlayerIdMessage = CreateMessage(ServerToClient.AssignPlayerId);
+        IWriteMessage assignPlayerIdMessage = new WriteOnlyMessage();
         assignPlayerIdMessage.WriteByte(message.Sender.Id);
-        SendMessageToClient(message.Sender, assignPlayerIdMessage);
+        SendToClient(assignPlayerIdMessage, ServerToClient.AssignPlayerId, message.Sender);
 
-        IWriteMessage playerConnectedMessage = CreateMessage(ServerToClient.PlayerConnected);
+        IWriteMessage playerConnectedMessage = new WriteOnlyMessage();
         playerConnectedMessage.WriteByte(message.Sender.Id);
         playerConnectedMessage.WriteCharArray($"Player {message.Sender.Id}");
         
         foreach (NetworkConnection client in clients)
         {
-            SendMessageToClient(client, playerConnectedMessage);
+            SendToClient(playerConnectedMessage, ServerToClient.PlayerConnected, client);
         }
     }
 
     private void HandleFullUpdate(IReadMessage message)
     {
-        IWriteMessage boardResetMessage = CreateMessage(ServerToClient.BoardReset);
+        IWriteMessage boardResetMessage = new WriteOnlyMessage();
         boardResetMessage.WriteByte(Board.Width);
         boardResetMessage.WriteByte(Board.Height);
-        SendMessageToClient(message.Sender, boardResetMessage);
+        SendToClient(boardResetMessage, ServerToClient.BoardReset, message.Sender);
 
         // Board Set
         for (byte x = 0; x < Board.Width; x++)
         {
             for (byte y = 0; y < Board.Height; y++)
             {
-                IWriteMessage boardSetMessage = CreateMessage(ServerToClient.BoardSet);
+                IWriteMessage boardSetMessage = new WriteOnlyMessage();
 
                 Tile tile = Board.GetResource(x, y);
 
@@ -299,31 +356,31 @@ public class SnakeServer : EntitySystem
 
                 cellData.Serialize(boardSetMessage);
 
-                SendMessageToClient(message.Sender, boardSetMessage);
+                SendToClient(boardSetMessage, ServerToClient.BoardSet, message.Sender);
             }
         }
 
         // PlayerConnected
         foreach (NetworkConnection client in clients)
         {
-            IWriteMessage playerConnectedMessage = CreateMessage(ServerToClient.PlayerConnected);
+            IWriteMessage playerConnectedMessage = new WriteOnlyMessage();
             playerConnectedMessage.WriteByte(client.Id);
             playerConnectedMessage.WriteCharArray($"Player {client.Id}");
-            SendMessageToClient(message.Sender, playerConnectedMessage);
+            SendToClient(playerConnectedMessage, ServerToClient.PlayerConnected, message.Sender);
         }
 
 
         // PlayerSpawned
         foreach (Snake snake in Snakes)
         {
-            IWriteMessage playerSpawnedMessage = CreateMessage(ServerToClient.PlayerSpawned);
+            IWriteMessage playerSpawnedMessage = new WriteOnlyMessage();
             playerSpawnedMessage.WriteByte(snake.PlayerId);
-            SendMessageToClient(message.Sender, playerSpawnedMessage);
+            SendToClient(playerSpawnedMessage, ServerToClient.PlayerSpawned, message.Sender);
         }
 
         // RespawnAllowed
-        IWriteMessage respawnAllowedMessage = CreateMessage(ServerToClient.RespawnAllowed);
-        SendMessageToClient(message.Sender, respawnAllowedMessage);
+        IWriteMessage respawnAllowedMessage = new WriteOnlyMessage();
+        SendToClient(respawnAllowedMessage, ServerToClient.RespawnAllowed, message.Sender);
 
         logger.LogInfo($"Sent full update to {message.Sender}");
     }
@@ -338,9 +395,9 @@ public class SnakeServer : EntitySystem
 
         SpawnSnake(message.Sender.Id, 25, 25);
 
-        IWriteMessage playerSpawnedMessage = CreateMessage(ServerToClient.PlayerSpawned);
+        IWriteMessage playerSpawnedMessage = new WriteOnlyMessage();
         playerSpawnedMessage.WriteByte(message.Sender.Id);
-        SendMessageToClient(message.Sender, playerSpawnedMessage);
+        SendToClient(playerSpawnedMessage, ServerToClient.PlayerSpawned, message.Sender);
 
         logger.LogInfo($"Spawned snake for client {message.Sender}");
     }

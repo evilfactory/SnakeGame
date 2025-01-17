@@ -38,6 +38,7 @@ public enum ClientToServer : byte
     SendChatMessage = 6
 }
 
+
 public class TileData : NetMessage
 {
     public TileType Resource;

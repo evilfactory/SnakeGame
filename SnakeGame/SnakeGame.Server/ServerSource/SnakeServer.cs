@@ -163,6 +163,7 @@ public class SnakeServer : EntitySystem
                         HandleConnecting(message);
                         break;
                     case ClientToServer.Disconnecting:
+                        HandleDisconnecting(message);
                         break;
                     case ClientToServer.FullUpdate:
                         HandleFullUpdate(message);
@@ -355,5 +356,10 @@ public class SnakeServer : EntitySystem
         if (snake == null) { return; }
 
         snake.Input = (PlayerInput)input;
+    }
+
+    private void HandleDisconnecting(IReadMessage message)
+    {
+        Transport.DisconnectClient(message.Sender, DisconnectReason.Unknown);
     }
 }

@@ -11,7 +11,7 @@ public class MainMenu : EntitySystem, IDrawGUI
     [Dependency]
     protected WindowSystem WindowSystem = default!;
     [Dependency]
-    protected RenderingSystem RenderingSystem = default!;
+    protected IRenderingService RenderingService = default!;
     [Dependency]
     protected SnakeClient SnakeClient = default!;
 
@@ -24,7 +24,7 @@ public class MainMenu : EntitySystem, IDrawGUI
         new GUIText(new RectTransform(list.RectTransform, new Vector2(1f, 0.1f), Anchor.TopCenter, Pivot.TopCenter), "Main Menu", 100, Color.White);
         var connectButton = new GUIButton(new RectTransform(list.RectTransform, new Vector2(0.5f, 0.1f), Anchor.TopCenter, Pivot.TopCenter), () =>
         {
-            SnakeClient.Connect(IPEndPoint.Parse("127.0.0.1:8080"));
+            SnakeClient.Connect(IPEndPoint.Parse("127.0.0.1:3007"));
         });
         connectButton.RectTransform.MinSize = new Vector2(400, 100);
         new GUIText(new RectTransform(connectButton.RectTransform, new Vector2(1f, 1f), Anchor.Center, Pivot.Center), "Connect Localhost", 50, Color.White);
@@ -39,9 +39,9 @@ public class MainMenu : EntitySystem, IDrawGUI
 
         mainFrame.RectTransform.AbsoluteSize = new Vector2(WindowSystem.Width, WindowSystem.Height);
 
-        RenderingSystem.Begin(Matrix4x4.CreateOrthographicOffCenter(0f, WindowSystem.Width, WindowSystem.Height, 0f, 0.001f, 100f));
+        RenderingService.Begin(Matrix4x4.CreateOrthographicOffCenter(0f, WindowSystem.Width, WindowSystem.Height, 0f, 0.001f, 100f));
         mainFrame.Draw();
-        RenderingSystem.End();
+        RenderingService.End();
     }
 
     public override void OnUpdate(float deltaTime)

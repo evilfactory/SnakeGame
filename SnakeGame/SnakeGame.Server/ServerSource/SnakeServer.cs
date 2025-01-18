@@ -16,7 +16,8 @@ public class SnakeServer : EntitySystem
 
     private List<NetworkConnection> clients = new List<NetworkConnection>();
 
-    private Dictionary<NetworkConnection, Dictionary<ServerToClient, Queue<QueuedSendMessage>>> queuedSendMessages = new Dictionary<NetworkConnection, Dictionary<ServerToClient, Queue<QueuedSendMessage>>>();
+    private Dictionary<NetworkConnection, PacketSerializer> packetSerializers = new Dictionary<NetworkConnection, PacketSerializer>();
+    private PacketDeserializer packetDeserializer = new PacketDeserializer();
 
     protected ILogger logger;
 
@@ -39,60 +40,14 @@ public class SnakeServer : EntitySystem
     {
         Transport.Update();
 
-        foreach ((NetworkConnection connection, Dictionary<ServerToClient, Queue<QueuedSendMessage>> sendMessages) in queuedSendMessages)
+        foreach ((NetworkConnection connection, PacketSerializer serializer) in packetSerializers)
         {
-            WriteOnlyMessage packet = new WriteOnlyMessage();
-            packet.WriteByte(0);
-
-            int groupCount = 0;
-
-            WriteOnlyMessage allGroupData = new WriteOnlyMessage();
-
-            foreach ((ServerToClient type, Queue<QueuedSendMessage> queue) in sendMessages)
+            IWriteMessage packet = new WriteOnlyMessage();
+            if (serializer.BuildMessage(packet))
             {
-                if (queue.Count == 0)
-                {
-                    continue;
-                }
-
-                WriteOnlyMessage groupData = new WriteOnlyMessage();
-                byte amount = 0;
-
-                while (queue.Count > 0)
-                {
-                    QueuedSendMessage queuedMessage = queue.Peek();
-
-                    // Do we have enough space to write this message?
-                    if (packet.LengthBytes + groupData.LengthBytes + allGroupData.LengthBytes + queuedMessage.Message.LengthBytes > 1024)
-                    {
-                        break;
-                    }
-
-                    queuedMessage = queue.Dequeue();
-
-                    groupData.WriteBytes(queuedMessage.Message.Buffer, 0, queuedMessage.Message.LengthBytes);
-                    amount++;
-                }
-
-                if (amount > 0)
-                {
-                    groupCount++;
-                    allGroupData.WriteByte((byte)type);
-                    allGroupData.WriteByte(amount);
-                    allGroupData.WriteUInt16((UInt16)groupData.LengthBytes);
-                    allGroupData.WriteBytes(groupData.Buffer, 0, groupData.LengthBytes);
-                }
-            }
-
-            if (groupCount > 0)
-            {
-                packet.WriteByte((byte)(groupCount - 1));
-                packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
-
                 Transport.SendToClient(packet, connection);
             }
         }
-
 
         foreach (Snake snake in Snakes)
         {
@@ -171,7 +126,7 @@ public class SnakeServer : EntitySystem
 
     public void Listen(int port)
     {
-        queuedSendMessages.Clear();
+        packetSerializers.Clear();
         Transport.Listen(port);
 
         logger.LogInfo($"Listening on port {port}");
@@ -190,17 +145,12 @@ public class SnakeServer : EntitySystem
             return;
         }
 
-        if (!queuedSendMessages.ContainsKey(connection))
+        if (!packetSerializers.ContainsKey(connection))
         {
-            queuedSendMessages[connection] = new Dictionary<ServerToClient, Queue<QueuedSendMessage>>();
+            packetSerializers[connection] = new PacketSerializer();
         }
 
-        if (!queuedSendMessages[connection].ContainsKey(type))
-        {
-            queuedSendMessages[connection][type] = new Queue<QueuedSendMessage>();
-        }
-
-        queuedSendMessages[connection][type].Enqueue(new QueuedSendMessage { Message = message });
+        packetSerializers[connection].QueueMessage(message, type);
     }
 
     public void OnClientConnected(NetworkConnection connection)
@@ -212,59 +162,46 @@ public class SnakeServer : EntitySystem
     {
         logger.LogInfo($"Client disconnected: {connection.Id}");
 
-        queuedSendMessages.Remove(connection);
+        packetSerializers.Remove(connection);
         clients.Remove(connection);
     }
 
-    public void OnMessageReceived(IReadMessage message)
+    public void OnMessageReceived(IReadMessage incomingMessage)
     {
-        logger.LogVerbose($"Message received from {message.Sender.Id}");
+        logger.LogVerbose($"Message received from {incomingMessage.Sender.Id}");
         // print all hexadecimal bytes but also space them out
-        logger.LogVerbose(string.Join(" ", message.Buffer.Select(b => b.ToString("X2"))));
+        logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
 
-        byte clientTick = message.ReadByte();
-        byte groupCount = message.ReadByte();
-
-        for (int i = 0; i < groupCount; i++)
+        var result = packetDeserializer.ReadIncoming(incomingMessage, (ClientToServer messageType, IReadMessage message) =>
         {
-            ClientToServer messageType = (ClientToServer)message.ReadByte();
-
-            byte messageCount = message.ReadByte();
-            ushort skipBytes = message.ReadUInt16();
-
-            int sizeAfterRead = message.BytePosition + skipBytes;
-
-            for (int j = 0; j < messageCount + 1; j++)
+            switch (messageType)
             {
-                switch (messageType)
-                {
-                    case ClientToServer.RequestLobbyInfo:
-                        HandleRequestLobbyInfo(message);
-                        break;
-                    case ClientToServer.Connecting:
-                        HandleConnecting(message);
-                        break;
-                    case ClientToServer.Disconnecting:
-                        HandleDisconnecting(message);
-                        break;
-                    case ClientToServer.FullUpdate:
-                        HandleFullUpdate(message);
-                        break;
-                    case ClientToServer.PlayerInput:
-                        HandlePlayerInput(message);
-                        break;
-                    case ClientToServer.RequestRespawn:
-                        HandleRequestRespawn(message);
-                        break;
-                    case ClientToServer.SendChatMessage:
-                        break;
-                }
+                case ClientToServer.RequestLobbyInfo:
+                    HandleRequestLobbyInfo(message);
+                    break;
+                case ClientToServer.Connecting:
+                    HandleConnecting(message);
+                    break;
+                case ClientToServer.Disconnecting:
+                    HandleDisconnecting(message);
+                    break;
+                case ClientToServer.FullUpdate:
+                    HandleFullUpdate(message);
+                    break;
+                case ClientToServer.PlayerInput:
+                    HandlePlayerInput(message);
+                    break;
+                case ClientToServer.RequestRespawn:
+                    HandleRequestRespawn(message);
+                    break;
+                case ClientToServer.SendChatMessage:
+                    break;
             }
+        });
 
-            if (sizeAfterRead != message.BytePosition)
-            {
-                logger.LogWarning($"The message size did not match the skip bytes value, possibly malformed message? connection = {message.Sender}, messageType = {messageType}, messageCount = {messageCount}, skipBytes = {skipBytes}, sizeAfterRead = {sizeAfterRead}, messageSize = {message.BytePosition}");
-            }
+        foreach (var error in result.Errors)
+        {
+            logger.LogError(error.Message);
         }
     }
 
@@ -288,22 +225,23 @@ public class SnakeServer : EntitySystem
 
     private void HandleRequestLobbyInfo(IReadMessage message)
     {
-        IWriteMessage response = new WriteOnlyMessage();
-
-        response.WriteByte((byte)clients.Count);
-        response.WriteCharArray("Funny lobby");
-        response.WriteCharArray("I fucking hate drainage system. I mean first of all, WATER? Why the fuck is the protagonist, a slugcat, forced to go into water?? This is animal abuse and i will not stand for it. Secondly, THAT ONE FUCKING ROOM. you know the one. i was on my 237th cycle");
-
-        HostInfo hostInfo = new HostInfo
+        LobbyInformation lobbyInfo = new LobbyInformation
         {
-            VersionMajor = 0,
-            VersionMinor = 7,
-            AgentString = "Evil Snake Server"
+            PlayerCount = (byte)clients.Count,
+            Title = "AAA",
+            //Description = "I fucking hate drainage system. I mean first of all, WATER? Why the fuck is the protagonist, a slugcat, forced to go into water?? This is animal abuse and i will not stand for it. Secondly, THAT ONE FUCKING ROOM. you know the one. i was on my 237th cycle",
+            Description="BBB",
+            HostInfo = new HostInfo()
+            {
+                VersionMajor = 0,
+                VersionMinor = 7,
+                AgentString = "Evil Snake Server"
+            }
         };
-
-        hostInfo.Serialize(response);
-
+        IWriteMessage response = new WriteOnlyMessage();
+        lobbyInfo.Serialize(response);
         SendToClient(response, ServerToClient.LobbyInformation, message.Sender);
+
 
         logger.LogInfo("Sent lobby information");
     }
@@ -315,21 +253,21 @@ public class SnakeServer : EntitySystem
             return;
         }
 
+        Connecting connecting = new Connecting();
+        connecting.Deserialize(message);
+
         clients.Add(message.Sender);
 
-        string name = message.ReadCharArray();
-        HostInfo hostInfo = new HostInfo();
-        hostInfo.Deserialize(message);
-
-        logger.LogInfo($"Client {message.Sender.Id} connected with name {name} and agent {hostInfo.AgentString}, snake {hostInfo.VersionMajor}.{hostInfo.VersionMinor}");
+        logger.LogInfo($"Received connecting package {connecting} from {message.Sender}");
 
         IWriteMessage gameConfigMessage = new WriteOnlyMessage();
-        GameConfig gameConfig = new GameConfig() { TickFrequency = 60 };
+        GameConfig gameConfig = new GameConfig() { TickFrequency = 20 };
         gameConfig.Serialize(gameConfigMessage);
         SendToClient(gameConfigMessage, ServerToClient.GameConfig, message.Sender);
 
         IWriteMessage assignPlayerIdMessage = new WriteOnlyMessage();
-        assignPlayerIdMessage.WriteByte(message.Sender.Id);
+        AssignPlayerId assignPlayerId = new AssignPlayerId() { PlayerId = message.Sender.Id };
+        assignPlayerId.Serialize(assignPlayerIdMessage);
         SendToClient(assignPlayerIdMessage, ServerToClient.AssignPlayerId, message.Sender);
 
         IWriteMessage playerConnectedMessage = new WriteOnlyMessage();

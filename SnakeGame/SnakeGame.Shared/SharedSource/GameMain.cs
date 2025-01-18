@@ -24,7 +24,7 @@ class GameMain
         application.AddSystem(new AudioSystem());
         application.AddSystem(new FontSystem());
 #elif SERVER
-        application.AddSystem(new HeadlessUpdateLoop());
+        application.AddSystem(new HeadlessUpdateLoop() { UpdateRate = 20 });
 #endif
         application.AddSystem(new ParentSystem());
         application.AddSystem(new TransformSystem());
@@ -38,7 +38,6 @@ class GameMain
 #endif
 
         application.AddSystem(new SnakeGame());
-        application.AddSystem(new SnakeSystem());
 
 #if CLIENT
         application.AddSystem(new MainMenu());

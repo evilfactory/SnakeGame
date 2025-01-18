@@ -11,10 +11,12 @@ public class SnakeClient : EntitySystem
     protected MainMenu MainMenu = default!;
     [Dependency]
     protected InputSystem InputSystem = default!;
-    [Dependency]
-    protected IUpdateLoop UpdateLoop = default!;
 
     public Transport Transport { get; private set; }
+
+    private GameConfig gameConfig = new GameConfig() { TickFrequency = 20 };
+
+    private DateTime lastNetworkUpdateTime = DateTime.Now;
 
     private Board board;
 
@@ -70,17 +72,21 @@ public class SnakeClient : EntitySystem
             inputReceived = true;
         }
 
-        if (inputReceived)
+        // Only send a message every gameConfig.TickFrequency
+        if ((DateTime.Now - lastNetworkUpdateTime).TotalMilliseconds > gameConfig.TickFrequency)
         {
-            IWriteMessage inputMessage = new WriteOnlyMessage();
-            inputMessage.WriteByte((byte)playerInput);
-            SendToServer(ClientToServer.PlayerInput, inputMessage);
-        }
+            if (inputReceived)
+            {
+                IWriteMessage inputMessage = new WriteOnlyMessage();
+                inputMessage.WriteByte((byte)playerInput);
+                SendToServer(ClientToServer.PlayerInput, inputMessage);
+            }
 
-        IWriteMessage message = new WriteOnlyMessage();
-        if (packetSerializer.BuildMessage(message))
-        {
-            Transport.SendToServer(message);
+            IWriteMessage message = new WriteOnlyMessage();
+            if (packetSerializer.BuildMessage(message))
+            {
+                Transport.SendToServer(message);
+            }
         }
     }
 
@@ -203,11 +209,8 @@ public class SnakeClient : EntitySystem
 
     private void HandleGameConfig(IReadMessage message)
     {
-        GameConfig gameConfig = new GameConfig();
+        gameConfig = new GameConfig();
         gameConfig.Deserialize(message);
-
-        UpdateLoop.UpdateRate = gameConfig.TickFrequency;
-
         logger.LogInfo($"Received game config: {gameConfig}");
     }
 

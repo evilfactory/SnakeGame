@@ -5,7 +5,16 @@ namespace SnakeGame;
 
 public class SnakeClient : EntitySystem
 {
+    [Dependency]
+    protected SnakeRendering SnakeRendering = default!;
+    [Dependency]
+    protected MainMenu MainMenu = default!;
+    [Dependency]
+    protected InputSystem InputSystem = default!;
+
     public Transport Transport { get; private set; }
+
+    private Board board;
 
     protected ILogger logger;
 
@@ -30,13 +39,54 @@ public class SnakeClient : EntitySystem
     {
         Transport.Update();
 
-        if (connected)
+        if (!connected)
         {
-            IWriteMessage message = new WriteOnlyMessage();
-            if (packetSerializer.BuildMessage(message))
-            {
-                Transport.SendToServer(message);
-            }
+            return;
+        }
+
+        PlayerInput playerInput = PlayerInput.Up;
+        bool inputReceived = false;
+
+        if (InputSystem.IsKeyDown(Key.W))
+        {
+            playerInput = PlayerInput.Up;
+            inputReceived = true;
+        }
+        else if (InputSystem.IsKeyDown(Key.S))
+        {
+            playerInput = PlayerInput.Down;
+            inputReceived = true;
+        }
+        else if (InputSystem.IsKeyDown(Key.A))
+        {
+            playerInput = PlayerInput.Left;
+            inputReceived = true;
+        }
+        else if (InputSystem.IsKeyDown(Key.D))
+        {
+            playerInput = PlayerInput.Right;
+            inputReceived = true;
+        }
+
+        if (inputReceived)
+        {
+            IWriteMessage inputMessage = new WriteOnlyMessage();
+            inputMessage.WriteByte((byte)playerInput);
+            SendToServer(ClientToServer.PlayerInput, inputMessage);
+        }
+
+        IWriteMessage message = new WriteOnlyMessage();
+        if (packetSerializer.BuildMessage(message))
+        {
+            Transport.SendToServer(message);
+        }
+    }
+
+    public override void OnDraw(float deltaTime)
+    {
+        if (board != null)
+        {
+            SnakeRendering.DrawBoard(board);
         }
     }
 
@@ -60,6 +110,7 @@ public class SnakeClient : EntitySystem
         logger.LogInfo("Connected to server");
 
         connected = true;
+        MainMenu.ShowMainMenu = false;
 
         SendToServer(ClientToServer.RequestLobbyInfo, new WriteOnlyMessage());
 
@@ -86,6 +137,7 @@ public class SnakeClient : EntitySystem
         logger.LogInfo("Disconnected from server");
 
         connected = false;
+        MainMenu.ShowMainMenu = true;
     }
 
     public void OnMessageReceived(IReadMessage incomingMessage)
@@ -168,6 +220,8 @@ public class SnakeClient : EntitySystem
         BoardReset boardReset = new BoardReset();
         boardReset.Deserialize(message);
 
+        board = new Board(boardReset.Width, boardReset.Height);
+
         logger.LogInfo($"Received board reset: {boardReset}");
     }
 
@@ -175,6 +229,12 @@ public class SnakeClient : EntitySystem
     {
         BoardSet boardSet = new BoardSet();
         boardSet.Deserialize(message);
+
+        board.SetResource(boardSet.X, boardSet.Y, new Tile()
+        {
+            PlayerId = boardSet.Data.AssociatedPlayerId,
+            Type = boardSet.Data.Resource
+        });
 
         logger.LogInfo($"Received board set: {boardSet}");
     }

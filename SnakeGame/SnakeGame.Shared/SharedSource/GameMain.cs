@@ -33,6 +33,7 @@ class GameMain
 
 #if CLIENT
         application.AddSystem(new SnakeClient());
+        application.AddSystem(new SnakeRendering());
 #elif SERVER
         application.AddSystem(new SnakeServer());
 #endif

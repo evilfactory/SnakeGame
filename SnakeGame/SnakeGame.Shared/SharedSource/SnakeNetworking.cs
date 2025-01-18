@@ -1,5 +1,6 @@
 using MalignEngine;
 using FluentResults;
+using System.Numerics;
 
 namespace SnakeGame;
 
@@ -109,6 +110,56 @@ public class AssignPlayerId : NetMessage
     }
 }
 
+public class BoardReset : NetMessage
+{
+    public byte Width;
+    public byte Height;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        Width = message.ReadByte();
+        Height = message.ReadByte();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(Width);
+        message.WriteByte(Height);
+    }
+
+    public override string ToString()
+    {
+        return $"BoardReset ( Width: {Width}, Height: {Height} )";
+    }
+}
+
+public class BoardSet : NetMessage
+{
+    public byte X;
+    public byte Y;
+    public CellData Data;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        X = message.ReadByte();
+        Y = message.ReadByte();
+        Data = new CellData();
+        Data.Deserialize(message);
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(X);
+        message.WriteByte(Y);
+        Data.Serialize(message);
+    }
+
+    public override string ToString()
+    {
+        return $"BoardSet ( X: {X}, Y: {Y}, Data: {Data} )";
+    }
+}
+
 public class PlayerConnected : NetMessage
 {
     public byte PlayerId;
@@ -131,7 +182,123 @@ public class PlayerConnected : NetMessage
     }
 }
 
-public class TileData : NetMessage
+public class PlayerDisconnected : NetMessage
+{
+    public byte PlayerId;
+    public string Reason;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        PlayerId = message.ReadByte();
+        Reason = message.ReadCharArray();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(PlayerId);
+        message.WriteCharArray(Reason);
+    }
+
+    public override string ToString()
+    {
+        return $"PlayerDisconnected ( PlayerId: {PlayerId}, Reason: {Reason} )";
+    }
+}
+
+public class PlayerSpawned : NetMessage
+{
+    public byte PlayerId;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        PlayerId = message.ReadByte();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(PlayerId);
+    }
+
+    public override string ToString()
+    {
+        return $"PlayerSpawned ( PlayerId: {PlayerId} )";
+    }
+}
+
+public class PlayerDied : NetMessage
+{
+    public byte PlayerId;
+    public byte RespawnTimeSeconds;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        PlayerId = message.ReadByte();
+        RespawnTimeSeconds = message.ReadByte();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(PlayerId);
+        message.WriteByte(RespawnTimeSeconds);
+    }
+
+    public override string ToString()
+    {
+        return $"PlayerDied ( PlayerId: {PlayerId}, RespawnTimeSeconds: {RespawnTimeSeconds} )";
+    }
+}
+
+public class PlayerMoved : NetMessage
+{
+    public byte PlayerId;
+    public Vector2 NewPosition;
+    public bool Grew;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        PlayerId = message.ReadByte();
+        NewPosition = new Vector2(message.ReadSingle(), message.ReadSingle());
+        Grew = message.ReadBoolean();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(PlayerId);
+        message.WriteSingle(NewPosition.X);
+        message.WriteSingle(NewPosition.Y);
+        message.WriteBoolean(Grew);
+    }
+
+    public override string ToString()
+    {
+        return $"PlayerMoved ( PlayerId: {PlayerId}, NewPosition: {NewPosition}, Grew: {Grew} )";
+    }
+}
+
+public class SendChatMessage : NetMessage
+{
+    public byte PlayerId;
+    public string Message;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        PlayerId = message.ReadByte();
+        Message = message.ReadCharArray();
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(PlayerId);
+        message.WriteCharArray(Message);
+    }
+
+    public override string ToString()
+    {
+        return $"SendChatMessage ( PlayerId: {PlayerId}, Message: {Message} )";
+    }
+}
+
+public class CellData : NetMessage
 {
     public TileType Resource;
     public byte AssociatedPlayerId;
@@ -146,6 +313,33 @@ public class TileData : NetMessage
     {
         message.WriteByte((byte)Resource);
         message.WriteByte(AssociatedPlayerId);
+    }
+}
+
+public class CellDataWithPos : NetMessage
+{
+    public byte X;
+    public byte Y;
+    public CellData Data;
+
+    public override void Deserialize(IReadMessage message)
+    {
+        X = message.ReadByte();
+        Y = message.ReadByte();
+        Data = new CellData();
+        Data.Deserialize(message);
+    }
+
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(X);
+        message.WriteByte(Y);
+        Data.Serialize(message);
+    }
+
+    public override string ToString()
+    {
+        return $"CellDataWithPos ( X: {X}, Y: {Y}, Data: {Data} )";
     }
 }
 

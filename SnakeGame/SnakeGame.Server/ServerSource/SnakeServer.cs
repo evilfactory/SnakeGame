@@ -22,6 +22,8 @@ public class SnakeServer : EntitySystem
     private Dictionary<NetworkConnection, PacketSerializer> packetSerializers = new Dictionary<NetworkConnection, PacketSerializer>();
     private PacketDeserializer packetDeserializer = new PacketDeserializer();
 
+    private Queue<NetworkConnection> respawnQueue = new Queue<NetworkConnection>();
+
     protected ILogger logger;
 
     public override void OnInitialize()
@@ -52,9 +54,17 @@ public class SnakeServer : EntitySystem
             }
         }
 
-        foreach (Snake snake in Snakes)
+        // Loop through snakes backwards to avoid concurrent modification
+        for (int i = Snakes.Count - 1; i >= 0; i--)
         {
-            MoveSnake(snake);
+            MoveSnake(Snakes[i]);
+        }
+
+        while (respawnQueue.Count > 0)
+        {
+            NetworkConnection connection = respawnQueue.Dequeue();
+            // Send respawn allowed
+            SendToClient(new WriteOnlyMessage(), ServerToClient.RespawnAllowed, connection);
         }
     }
 
@@ -64,9 +74,9 @@ public class SnakeServer : EntitySystem
         snake.PlayerId = playerId;
         snake.Input = new PlayerInput();
         snake.HeadPosition = new Vector2D<byte>(positionX, positionY);
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX - 1), positionY));
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX - 2), positionY));
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX - 3), positionY));
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY - 1 - playerId)));
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY - 2 - playerId)));
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY - 3 - playerId)));
 
         Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = playerId });
         Board.SetResource(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
@@ -74,6 +84,44 @@ public class SnakeServer : EntitySystem
         Board.SetResource(snake.BodyPositions[2].X, snake.BodyPositions[2].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
 
         Snakes.Add(snake);
+    }
+
+    public void KillSnake(Snake snake)
+    {
+        Snakes.Remove(snake);
+
+        foreach (Vector2D<byte> bodyPosition in snake.BodyPositions)
+        {
+            if (Random.Shared.Next(0, 100) > 50)
+            {
+                Board.SetResource(bodyPosition.X, bodyPosition.Y, new Tile { Type = TileType.Food, PlayerId = snake.PlayerId });
+                SendBoardMessage(bodyPosition.X, bodyPosition.Y, new Tile { Type = TileType.Food, PlayerId = snake.PlayerId });
+            }
+            else
+            {
+                Board.SetResource(bodyPosition.X, bodyPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
+                SendBoardMessage(bodyPosition.X, bodyPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
+            }
+        }
+
+        Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
+        SendBoardMessage(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
+
+        PlayerDied playerDied = new PlayerDied() { PlayerId = snake.PlayerId, RespawnTimeSeconds = 5 };
+        IWriteMessage playerDiedMessage = new WriteOnlyMessage();
+        playerDied.Serialize(playerDiedMessage);
+
+        foreach (NetworkConnection client in clients)
+        {
+            SendToClient(playerDiedMessage, ServerToClient.PlayerDied, client);
+        }
+
+        NetworkConnection connection = clients.Find(client => client.Id == snake.PlayerId);
+
+        if (connection != null)
+        {
+            respawnQueue.Enqueue(connection);
+        }
     }
 
     private void MoveSnake(Snake snake)
@@ -115,6 +163,36 @@ public class SnakeServer : EntitySystem
             newHeadPosition.Y = 0;
         }
 
+        // Check if the head position will end up in another snake
+        foreach (Snake otherSnake in Snakes)
+        {
+            //if (otherSnake.PlayerId == snake.PlayerId) { continue; }
+
+            if (otherSnake.HeadPosition == newHeadPosition)
+            {
+                // Kill both snakes
+                KillSnake(snake);
+                KillSnake(otherSnake);
+                return;
+            }
+
+            if (otherSnake.BodyPositions.Contains(newHeadPosition))
+            {
+                // Kill the snake
+                KillSnake(snake);
+                return;
+            }
+        }
+
+        bool grow = false;
+
+        // Check if the head position will end up in food
+        Tile tile = Board.GetResource(newHeadPosition.X, newHeadPosition.Y);
+        if (tile.Type == TileType.Food)
+        {
+            grow = true;
+        }
+
         snake.BodyPositions.Insert(0, snake.HeadPosition);
         snake.HeadPosition = newHeadPosition;
 
@@ -124,11 +202,13 @@ public class SnakeServer : EntitySystem
         SendBoardMessage(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = snake.PlayerId });
         SendBoardMessage(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = snake.PlayerId });
 
-
-        int indexToRemove = snake.BodyPositions.Count - 1;
-        Board.SetResource(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-        SendBoardMessage(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-        snake.BodyPositions.RemoveAt(indexToRemove);
+        if (!grow)
+        {
+            int indexToRemove = snake.BodyPositions.Count - 1;
+            Board.SetResource(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
+            SendBoardMessage(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
+            snake.BodyPositions.RemoveAt(indexToRemove);
+        }
     }
 
     public void Listen(int port)
@@ -171,13 +251,18 @@ public class SnakeServer : EntitySystem
 
         packetSerializers.Remove(connection);
         clients.Remove(connection);
+
+        // Kill all snakes belonging to the disconnected client
+        foreach (Snake snake in Snakes.FindAll(snake => snake.PlayerId == connection.Id))
+        {
+            KillSnake(snake);
+        }
     }
 
     public void OnMessageReceived(IReadMessage incomingMessage)
     {
-        logger.LogVerbose($"Message received from {incomingMessage.Sender.Id}");
-        // print all hexadecimal bytes but also space them out
-        logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
+        //logger.LogVerbose($"Message received from {incomingMessage.Sender.Id}");
+        //logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
 
         var result = packetDeserializer.ReadIncoming(incomingMessage, (ClientToServer messageType, IReadMessage message) =>
         {

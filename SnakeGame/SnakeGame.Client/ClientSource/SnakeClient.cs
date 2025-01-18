@@ -150,8 +150,8 @@ public class SnakeClient : EntitySystem
 
     public void OnMessageReceived(IReadMessage incomingMessage)
     {
-        logger.LogInfo($"Message received from server");
-        logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
+        //logger.LogInfo($"Message received from server");
+        //logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
 
         var result = packetDeserializer.ReadIncoming(incomingMessage, (ServerToClient messageType, IReadMessage message) =>
         {

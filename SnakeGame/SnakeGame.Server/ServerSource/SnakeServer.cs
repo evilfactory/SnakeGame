@@ -10,6 +10,9 @@ public class SnakeServer : EntitySystem
         public IWriteMessage Message { get; set; }
     }
 
+    [Dependency]
+    protected IUpdateLoop UpdateLoop = default!;
+
     public Transport Transport { get; private set; }
     public Board Board { get; private set; }
     public List<Snake> Snakes { get; private set; }
@@ -62,9 +65,13 @@ public class SnakeServer : EntitySystem
         snake.Input = new PlayerInput();
         snake.HeadPosition = new Vector2D<byte>(positionX, positionY);
         snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX - 1), positionY));
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX - 2), positionY));
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX - 3), positionY));
 
         Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = playerId });
         Board.SetResource(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
+        Board.SetResource(snake.BodyPositions[1].X, snake.BodyPositions[1].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
+        Board.SetResource(snake.BodyPositions[2].X, snake.BodyPositions[2].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
 
         Snakes.Add(snake);
     }
@@ -90,7 +97,7 @@ public class SnakeServer : EntitySystem
         }
 
         // Check if the new head position is out of bounds and teleport the snake to the other side of the board
-        if (newHeadPosition.X < 0)
+        if (newHeadPosition.X <= 0)
         {
             newHeadPosition.X = (byte)(Board.Width - 1);
         }
@@ -99,7 +106,7 @@ public class SnakeServer : EntitySystem
             newHeadPosition.X = 0;
         }
 
-        if (newHeadPosition.Y < 0)
+        if (newHeadPosition.Y <= 0)
         {
             newHeadPosition.Y = (byte)(Board.Height - 1);
         }
@@ -267,7 +274,7 @@ public class SnakeServer : EntitySystem
         logger.LogInfo($"Received connecting package {connecting} from {message.Sender}");
 
         IWriteMessage gameConfigMessage = new WriteOnlyMessage();
-        GameConfig gameConfig = new GameConfig() { TickFrequency = 20 };
+        GameConfig gameConfig = new GameConfig() { TickFrequency = (byte)UpdateLoop.UpdateRate };
         gameConfig.Serialize(gameConfigMessage);
         SendToClient(gameConfigMessage, ServerToClient.GameConfig, message.Sender);
 

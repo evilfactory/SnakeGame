@@ -11,6 +11,8 @@ public class SnakeClient : EntitySystem
     protected MainMenu MainMenu = default!;
     [Dependency]
     protected InputSystem InputSystem = default!;
+    [Dependency]
+    protected IUpdateLoop UpdateLoop = default!;
 
     public Transport Transport { get; private set; }
 
@@ -203,6 +205,8 @@ public class SnakeClient : EntitySystem
     {
         GameConfig gameConfig = new GameConfig();
         gameConfig.Deserialize(message);
+
+        UpdateLoop.UpdateRate = gameConfig.TickFrequency;
 
         logger.LogInfo($"Received game config: {gameConfig}");
     }

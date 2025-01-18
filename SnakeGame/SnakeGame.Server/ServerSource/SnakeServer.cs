@@ -44,7 +44,7 @@ public class SnakeServer : EntitySystem
             WriteOnlyMessage packet = new WriteOnlyMessage();
             packet.WriteByte(0);
 
-            byte groupCount = 0;
+            int groupCount = 0;
 
             WriteOnlyMessage allGroupData = new WriteOnlyMessage();
 
@@ -84,7 +84,7 @@ public class SnakeServer : EntitySystem
 
             if (groupCount > 0)
             {
-                packet.WriteByte(groupCount);
+                packet.WriteByte((byte)(groupCount - 1));
                 packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
 
                 Transport.SendToClient(packet, connection);

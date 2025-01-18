@@ -60,13 +60,15 @@ public class SnakeServer : EntitySystem
 
                 while (queue.Count > 0)
                 {
-                    QueuedSendMessage queuedMessage = queue.Dequeue();
+                    QueuedSendMessage queuedMessage = queue.Peek();
 
                     // Do we have enough space to write this message?
                     if (packet.LengthBytes + groupData.LengthBytes + allGroupData.LengthBytes + queuedMessage.Message.LengthBytes > 1024)
                     {
                         break;
                     }
+
+                    queuedMessage = queue.Dequeue();
 
                     groupData.WriteBytes(queuedMessage.Message.Buffer, 0, queuedMessage.Message.LengthBytes);
                     amount++;
@@ -217,8 +219,8 @@ public class SnakeServer : EntitySystem
     public void OnMessageReceived(IReadMessage message)
     {
         logger.LogVerbose($"Message received from {message.Sender.Id}");
-        // print all bytes
-        logger.LogVerbose(Convert.ToHexString(message.Buffer));
+        // print all hexadecimal bytes but also space them out
+        logger.LogVerbose(string.Join(" ", message.Buffer.Select(b => b.ToString("X2"))));
 
         byte clientTick = message.ReadByte();
         byte groupCount = message.ReadByte();
@@ -229,6 +231,8 @@ public class SnakeServer : EntitySystem
 
             byte messageCount = message.ReadByte();
             ushort skipBytes = message.ReadUInt16();
+
+            int sizeAfterRead = message.LengthBytes + skipBytes;
 
             for (int j = 0; j < messageCount + 1; j++)
             {
@@ -255,6 +259,11 @@ public class SnakeServer : EntitySystem
                     case ClientToServer.SendChatMessage:
                         break;
                 }
+            }
+
+            if (sizeAfterRead != message.BytePosition)
+            {
+                logger.LogWarning($"The message size did not match the skip bytes value, possibly malformed message? connection = {message.Sender}, messageType = {messageType}, messageCount = {messageCount}, skipBytes = {skipBytes}, sizeAfterRead = {sizeAfterRead}, messageSize = {message.BytePosition}");
             }
         }
     }

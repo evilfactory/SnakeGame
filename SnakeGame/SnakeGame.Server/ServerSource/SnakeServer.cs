@@ -232,7 +232,7 @@ public class SnakeServer : EntitySystem
             byte messageCount = message.ReadByte();
             ushort skipBytes = message.ReadUInt16();
 
-            int sizeAfterRead = message.LengthBytes + skipBytes;
+            int sizeAfterRead = message.BytePosition + skipBytes;
 
             for (int j = 0; j < messageCount + 1; j++)
             {

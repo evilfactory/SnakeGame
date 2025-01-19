@@ -300,9 +300,6 @@ public class SnakeServer : EntitySystem
                 case ClientToServer.PlayerInput:
                     HandlePlayerInput(message);
                     break;
-                case ClientToServer.RequestRespawn:
-                    HandleRequestRespawn(message);
-                    break;
                 case ClientToServer.SendChatMessage:
                     HandleSendChatMessage(message);
                     break;
@@ -453,35 +450,44 @@ public class SnakeServer : EntitySystem
         logger.LogInfo($"Sent full update to {message.Sender}");
     }
 
-    private void HandleRequestRespawn(IReadMessage message)
+    private void SpawnClient(NetworkConnection connection)
     {
         // Check if snake is already in the game
-        if (Snakes.Any(snake => snake.PlayerId == message.Sender.Id))
+        if (Snakes.Any(snake => snake.PlayerId == connection.Id))
         {
             return;
         }
 
-        SpawnSnake(message.Sender.Id, 25, 25);
+        SpawnSnake(connection.Id, 25, 25);
 
-        PlayerSpawned playerSpawned = new PlayerSpawned() { PlayerId = message.Sender.Id };
+        PlayerSpawned playerSpawned = new PlayerSpawned() { PlayerId = connection.Id };
         IWriteMessage playerSpawnedMessage = new WriteOnlyMessage();
         playerSpawned.Serialize(playerSpawnedMessage);
-        SendToClient(playerSpawnedMessage, ServerToClient.PlayerSpawned, message.Sender);
+        SendToClient(playerSpawnedMessage, ServerToClient.PlayerSpawned, connection);
 
-        logger.LogInfo($"Spawned snake for client {message.Sender}");
+        logger.LogInfo($"Spawned snake for client {connection}");
     }
 
     private void HandlePlayerInput(IReadMessage message)
     {
         byte input = message.ReadByte();
 
-        if (input > 4) { return; }
+        if (input > 5) { return; }
 
-        Snake? snake = Snakes.Find(snake => snake.PlayerId == message.Sender.Id);
+        PlayerInput playerInput = (PlayerInput)input;
 
-        if (snake == null) { return; }
+        if (playerInput == PlayerInput.Respawn)
+        {
+            SpawnClient(message.Sender);
+        }
+        else
+        {
+            Snake? snake = Snakes.Find(snake => snake.PlayerId == message.Sender.Id);
 
-        snake.Input = (PlayerInput)input;
+            if (snake == null) { return; }
+
+            snake.Input = (PlayerInput)input;
+        }
     }
 
     private void HandleDisconnecting(IReadMessage message)

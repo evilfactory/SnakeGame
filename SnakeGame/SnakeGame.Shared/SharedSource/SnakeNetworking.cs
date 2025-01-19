@@ -9,7 +9,8 @@ public enum PlayerInput : byte
     Up = 0,
     Right = 1,
     Down = 2,
-    Left = 3
+    Left = 3,
+    Respawn = 4
 }
 
 public enum ServerToClient : byte
@@ -35,8 +36,7 @@ public enum ClientToServer : byte
     Disconnecting = 2,
     FullUpdate = 3,
     PlayerInput = 4,
-    RequestRespawn = 5,
-    SendChatMessage = 6
+    SendChatMessage = 5
 }
 
 public class LobbyInformation : NetMessage

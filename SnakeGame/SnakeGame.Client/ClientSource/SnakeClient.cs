@@ -291,7 +291,9 @@ public class SnakeClient : EntitySystem
 
     private void HandleRespawnAllowed(IReadMessage message)
     {
-        SendToServer(ClientToServer.RequestRespawn, new WriteOnlyMessage());
+        IWriteMessage playerInput = new WriteOnlyMessage();
+        playerInput.WriteByte((byte)PlayerInput.Respawn);
+        SendToServer(ClientToServer.PlayerInput, playerInput);
 
         logger.LogInfo($"Received respawn allowed");
     }

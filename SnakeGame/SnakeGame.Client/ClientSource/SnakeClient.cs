@@ -1,5 +1,6 @@
 using MalignEngine;
 using System.Net;
+using TcpTransport = SnakeGame.TcpTransport;
 
 namespace SnakeGame;
 

@@ -404,38 +404,32 @@ public class PacketDeserializer
     public void ReadIncoming(IReadMessage message, Action<ServerToClient, IReadMessage> read, ILogger logger)
 #endif
     {
-        Result result = new Result();
+        byte clientTick = message.ReadByte();
+        byte groupCount = message.ReadByte();
 
-        while (message.BytePosition < message.LengthBytes)
+        logger.LogVerbose($"New packet being read: clientTick = {clientTick}, groupCount = {groupCount}");
+
+        for (int i = 0; i < groupCount; i++)
         {
-            byte clientTick = message.ReadByte();
-            byte groupCount = message.ReadByte();
-            ushort messageSize = message.ReadUInt16();
-
-            logger.LogVerbose($"New packet being read: clientTick = {clientTick}, groupCount = {groupCount}, messageSize = {messageSize}");
-
-            for (int i = 0; i < groupCount; i++)
-            {
 #if SERVER
-                ClientToServer messageType = (ClientToServer)message.ReadByte();
+            ClientToServer messageType = (ClientToServer)message.ReadByte();
 #elif CLIENT
-                ServerToClient messageType = (ServerToClient)message.ReadByte();
+            ServerToClient messageType = (ServerToClient)message.ReadByte();
 #endif
 
-                byte messageCount = message.ReadByte();
-                ushort skipBytes = message.ReadUInt16();
+            byte messageCount = message.ReadByte();
+            ushort skipBytes = message.ReadUInt16();
 
-                int sizeAfterRead = message.BytePosition + skipBytes;
+            int sizeAfterRead = message.BytePosition + skipBytes;
 
-                for (int j = 0; j < messageCount + 1; j++)
-                {
-                    read(messageType, message);
-                }
+            for (int j = 0; j < messageCount + 1; j++)
+            {
+                read(messageType, message);
+            }
 
-                if (sizeAfterRead != message.BytePosition)
-                {
-                    logger.LogError($"The message size did not match the skip bytes value, possibly malformed message? connection = {message.Sender}, messageType = {messageType}, messageCount = {messageCount}, skipBytes = {skipBytes}, sizeAfterRead = {sizeAfterRead}, messagePosition = {message.BytePosition}");
-                }
+            if (sizeAfterRead != message.BytePosition)
+            {
+                logger.LogError($"The message size did not match the skip bytes value, possibly malformed message? connection = {message.Sender}, messageType = {messageType}, messageCount = {messageCount}, skipBytes = {skipBytes}, sizeAfterRead = {sizeAfterRead}, messagePosition = {message.BytePosition}");
             }
         }
     }
@@ -473,8 +467,6 @@ public class PacketSerializer
 
     public bool BuildMessage(byte gameTick, IWriteMessage packet)
     {
-        packet.WriteByte(gameTick);
-
         int groupCount = 0;
 
         WriteOnlyMessage allGroupData = new WriteOnlyMessage();
@@ -519,8 +511,9 @@ public class PacketSerializer
             }
         }
 
-        packet.WriteByte((byte)groupCount);
         packet.WriteUInt16((UInt16)allGroupData.LengthBytes);
+        packet.WriteByte(gameTick);
+        packet.WriteByte((byte)groupCount);
         packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
 
         return groupCount > 0;

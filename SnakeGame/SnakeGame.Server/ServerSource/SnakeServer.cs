@@ -1,5 +1,6 @@
 ﻿using MalignEngine;
 using Silk.NET.Maths;
+using TcpTransport = SnakeGame.TcpTransport;
 
 namespace SnakeGame;
 

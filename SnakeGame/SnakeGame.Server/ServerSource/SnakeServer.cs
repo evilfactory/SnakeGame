@@ -111,9 +111,9 @@ public class SnakeServer : EntitySystem
         snake.PlayerId = playerId;
         snake.Input = new PlayerInput();
         snake.HeadPosition = new Vector2D<byte>(positionX, positionY);
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY - 1 - playerId)));
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY - 2 - playerId)));
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY - 3 - playerId)));
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY + 1 + playerId)));
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY + 2 + playerId)));
+        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY + 3 + playerId)));
 
         Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = playerId });
         Board.SetResource(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
@@ -168,10 +168,10 @@ public class SnakeServer : EntitySystem
         switch (snake.Input)
         {
             case PlayerInput.Up:
-                newHeadPosition.Y++;
+                newHeadPosition.Y--;
                 break;
             case PlayerInput.Down:
-                newHeadPosition.Y--;
+                newHeadPosition.Y++;
                 break;
             case PlayerInput.Left:
                 newHeadPosition.X--;

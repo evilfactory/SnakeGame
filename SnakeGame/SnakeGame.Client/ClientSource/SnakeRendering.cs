@@ -29,7 +29,7 @@ public class SnakeRendering : EntitySystem
                 Tile tile = board.GetResource(x, y);
                 if (tile.Type == TileType.SnakeHead && tile.PlayerId == focusOn)
                 {
-                    camPosition = new Vector2(x, y);
+                    camPosition = new Vector2(x, board.Height - y);
                     break;
                 }
             }
@@ -41,7 +41,7 @@ public class SnakeRendering : EntitySystem
         {
             for (byte y = 0; y < board.Height; y++)
             {
-                Vector2 position = new Vector2(x, y);
+                Vector2 position = new Vector2(x, board.Height - y);
                 Tile tile = board.GetResource(x, y);
 
                 switch (tile.Type)

@@ -17,6 +17,9 @@ public class SnakeServer : EntitySystem
     public Board Board { get; private set; }
     public List<Snake> Snakes { get; private set; }
 
+    private GameConfig gameConfig = new GameConfig() { TickFrequency = 60 };
+    private DateTime lastNetworkUpdateTime = DateTime.Now;
+
     private float movesPerSecond = 15f;
     private DateTime lastMoveTime = DateTime.Now;
 
@@ -46,17 +49,22 @@ public class SnakeServer : EntitySystem
 
     public override void OnUpdate(float deltaTime)
     {
-        foreach ((NetworkConnection connection, PacketSerializer serializer) in packetSerializers)
+        if ((DateTime.Now - lastNetworkUpdateTime).TotalMilliseconds > gameConfig.TickFrequency)
         {
-            if (connection.IsInvalid) { continue; }
 
-            IWriteMessage packet = new WriteOnlyMessage();
-            if (serializer.BuildMessage(packet))
+            foreach ((NetworkConnection connection, PacketSerializer serializer) in packetSerializers)
             {
-                Transport.SendToClient(packet, connection);
-            }
-        }
+                if (connection.IsInvalid) { continue; }
 
+                IWriteMessage packet = new WriteOnlyMessage();
+                if (serializer.BuildMessage(packet))
+                {
+                    Transport.SendToClient(packet, connection);
+                }
+            }
+
+            lastNetworkUpdateTime = DateTime.Now;
+        }
         Transport.Update();
 
         if (DateTime.Now - lastMoveTime > TimeSpan.FromSeconds(1.0 / movesPerSecond))
@@ -373,7 +381,6 @@ public class SnakeServer : EntitySystem
         logger.LogInfo($"Received connecting package {connecting} from {message.Sender}");
 
         IWriteMessage gameConfigMessage = new WriteOnlyMessage();
-        GameConfig gameConfig = new GameConfig() { TickFrequency = (byte)UpdateLoop.UpdateRate };
         gameConfig.Serialize(gameConfigMessage);
         SendToClient(gameConfigMessage, ServerToClient.GameConfig, message.Sender);
 

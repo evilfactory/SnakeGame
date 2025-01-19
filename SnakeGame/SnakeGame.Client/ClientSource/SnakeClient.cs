@@ -88,6 +88,8 @@ public class SnakeClient : EntitySystem
             {
                 Transport.SendToServer(message);
             }
+
+            lastNetworkUpdateTime = DateTime.Now;
         }
     }
 

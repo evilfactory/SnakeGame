@@ -52,5 +52,7 @@ public class Snake
     public Vector2D<byte> HeadPosition;
     public List<Vector2D<byte>> BodyPositions = new List<Vector2D<byte>>();
 
+    public bool Killed = false;
+
     public PlayerInput Input;
 }

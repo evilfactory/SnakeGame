@@ -35,6 +35,9 @@ public class SnakeServer : EntitySystem
 
     private float respawnTime = 1f;
 
+    private float foodSpawnTime = 2f;
+    private DateTime lastFoodSpawn = DateTime.Now;
+
     protected ILogger logger;
 
     public override void OnInitialize()
@@ -64,9 +67,27 @@ public class SnakeServer : EntitySystem
         {
             lastMoveTime = DateTime.Now;
 
-            for (int i = Snakes.Count - 1; i >= 0; i--)
+            List<Snake> snakes = new List<Snake>(Snakes);
+
+            foreach (Snake snake in snakes)
             {
-                MoveSnake(Snakes[i]);
+                if (snake.Killed) { continue; }
+
+                MoveSnake(snake);
+            }
+        }
+
+        if (Snakes.Count > 0 && DateTime.Now - lastFoodSpawn > TimeSpan.FromSeconds(foodSpawnTime))
+        {
+            lastFoodSpawn = DateTime.Now;
+
+            byte x = (byte)Random.Shared.Next(0, Board.Width);
+            byte y = (byte)Random.Shared.Next(0, Board.Height);
+
+            if (Board.GetResource(x, y).Type == TileType.Empty)
+            {
+                Board.SetResource(x, y, new Tile { Type = TileType.Food, PlayerId = 0 });
+                SendBoardMessage(x, y, new Tile { Type = TileType.Food, PlayerId = 0 });
             }
         }
 
@@ -77,7 +98,10 @@ public class SnakeServer : EntitySystem
             if (DateTime.Now > time)
             {
                 respawnQueue.Dequeue();
-                SpawnClient(connection);
+                if (!connection.IsInvalid)
+                {
+                    SpawnClient(connection);
+                }
             }
             else
             {
@@ -126,6 +150,7 @@ public class SnakeServer : EntitySystem
     public void KillSnake(Snake snake)
     {
         Snakes.Remove(snake);
+        snake.Killed = true;
 
         foreach (Vector2D<byte> bodyPosition in snake.BodyPositions)
         {

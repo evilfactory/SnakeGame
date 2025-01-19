@@ -28,6 +28,8 @@ public class SnakeClient : EntitySystem
 
     private bool connected = false;
 
+    private byte gameTick = 0;
+
     public override void OnInitialize()
     {
         logger = LoggerService.GetSawmill("snake-client");
@@ -74,7 +76,7 @@ public class SnakeClient : EntitySystem
         }
 
         // Only send a message every gameConfig.TickFrequency
-        if ((DateTime.Now - lastNetworkUpdateTime).TotalMilliseconds > gameConfig.TickFrequency)
+        if (DateTime.Now - lastNetworkUpdateTime > TimeSpan.FromSeconds(1.0 / gameConfig.TickFrequency))
         {
             if (inputReceived)
             {
@@ -84,12 +86,14 @@ public class SnakeClient : EntitySystem
             }
 
             IWriteMessage message = new WriteOnlyMessage();
-            if (packetSerializer.BuildMessage(message))
+            if (packetSerializer.BuildMessage(gameTick, message))
             {
                 Transport.SendToServer(message);
             }
 
             lastNetworkUpdateTime = DateTime.Now;
+
+            gameTick++;
         }
     }
 
@@ -156,7 +160,7 @@ public class SnakeClient : EntitySystem
         //logger.LogInfo($"Message received from server");
         //logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
 
-        var result = packetDeserializer.ReadIncoming(incomingMessage, (ServerToClient messageType, IReadMessage message) =>
+        packetDeserializer.ReadIncoming(incomingMessage, (ServerToClient messageType, IReadMessage message) =>
         {
             switch (messageType)
             {
@@ -194,12 +198,7 @@ public class SnakeClient : EntitySystem
                     HandleRespawnAllowed(message);
                     break;
             }
-        });
-
-        foreach (var error in result.Errors)
-        {
-            logger.LogError(error.Message);
-        }
+        }, logger);
     }
 
     private void HandleLobbyInformation(IReadMessage message)

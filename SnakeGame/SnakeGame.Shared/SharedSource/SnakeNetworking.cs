@@ -316,6 +316,11 @@ public class CellData : NetMessage
         message.WriteByte((byte)Resource);
         message.WriteByte(AssociatedPlayerId);
     }
+
+    public override string ToString()
+    {
+        return $"CellData ( Resource: {Resource}, AssociatedPlayerId: {AssociatedPlayerId} )";
+    }
 }
 
 public class CellDataWithPos : NetMessage
@@ -394,41 +399,45 @@ public class GameConfig : NetMessage
 public class PacketDeserializer
 {
 #if SERVER
-    public Result ReadIncoming(IReadMessage message, Action<ClientToServer, IReadMessage> read)
+    public void ReadIncoming(IReadMessage message, Action<ClientToServer, IReadMessage> read, ILogger logger)
 #elif CLIENT
-    public Result ReadIncoming(IReadMessage message, Action<ServerToClient, IReadMessage> read)
+    public void ReadIncoming(IReadMessage message, Action<ServerToClient, IReadMessage> read, ILogger logger)
 #endif
     {
-        Result result = Result.Ok();
+        Result result = new Result();
 
-        byte clientTick = message.ReadByte();
-        byte groupCount = message.ReadByte();
-
-        for (int i = 0; i < groupCount; i++)
+        while (message.BytePosition < message.LengthBytes)
         {
+            byte clientTick = message.ReadByte();
+            byte groupCount = message.ReadByte();
+            ushort messageSize = message.ReadUInt16();
+
+            logger.LogVerbose($"New packet being read: clientTick = {clientTick}, groupCount = {groupCount}, messageSize = {messageSize}");
+
+            for (int i = 0; i < groupCount; i++)
+            {
 #if SERVER
-            ClientToServer messageType = (ClientToServer)message.ReadByte();
+                ClientToServer messageType = (ClientToServer)message.ReadByte();
 #elif CLIENT
-            ServerToClient messageType = (ServerToClient)message.ReadByte();
+                ServerToClient messageType = (ServerToClient)message.ReadByte();
 #endif
 
-            byte messageCount = message.ReadByte();
-            ushort skipBytes = message.ReadUInt16();
+                byte messageCount = message.ReadByte();
+                ushort skipBytes = message.ReadUInt16();
 
-            int sizeAfterRead = message.BytePosition + skipBytes;
+                int sizeAfterRead = message.BytePosition + skipBytes;
 
-            for (int j = 0; j < messageCount + 1; j++)
-            {
-                read(messageType, message);
-            }
+                for (int j = 0; j < messageCount + 1; j++)
+                {
+                    read(messageType, message);
+                }
 
-            if (sizeAfterRead != message.BytePosition)
-            {
-                result = result.WithError($"The message size did not match the skip bytes value, possibly malformed message? connection = {message.Sender}, messageType = {messageType}, messageCount = {messageCount}, skipBytes = {skipBytes}, sizeAfterRead = {sizeAfterRead}, messagePosition = {message.BytePosition}");
+                if (sizeAfterRead != message.BytePosition)
+                {
+                    logger.LogError($"The message size did not match the skip bytes value, possibly malformed message? connection = {message.Sender}, messageType = {messageType}, messageCount = {messageCount}, skipBytes = {skipBytes}, sizeAfterRead = {sizeAfterRead}, messagePosition = {message.BytePosition}");
+                }
             }
         }
-
-        return result;
     }
 }
 
@@ -462,9 +471,9 @@ public class PacketSerializer
     }
 #endif
 
-    public bool BuildMessage(IWriteMessage packet)
+    public bool BuildMessage(byte gameTick, IWriteMessage packet)
     {
-        packet.WriteByte(0);
+        packet.WriteByte(gameTick);
 
         int groupCount = 0;
 
@@ -510,11 +519,9 @@ public class PacketSerializer
             }
         }
 
-        if (groupCount > 0)
-        {
-            packet.WriteByte((byte)groupCount);
-            packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
-        }
+        packet.WriteByte((byte)groupCount);
+        packet.WriteUInt16((UInt16)allGroupData.LengthBytes);
+        packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
 
         return groupCount > 0;
     }

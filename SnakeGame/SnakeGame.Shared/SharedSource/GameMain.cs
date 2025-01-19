@@ -24,7 +24,7 @@ class GameMain
         application.AddSystem(new AudioSystem());
         application.AddSystem(new FontSystem());
 #elif SERVER
-        application.AddSystem(new HeadlessUpdateLoop() { UpdateRate = 20 });
+        application.AddSystem(new HeadlessUpdateLoop() { UpdateRate = 60 });
 #endif
         application.AddSystem(new ParentSystem());
         application.AddSystem(new TransformSystem());

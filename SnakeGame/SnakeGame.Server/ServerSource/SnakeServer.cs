@@ -17,10 +17,10 @@ public class SnakeServer : EntitySystem
     public Board Board { get; private set; }
     public List<Snake> Snakes { get; private set; }
 
-    private GameConfig gameConfig = new GameConfig() { TickFrequency = 60 };
+    private GameConfig gameConfig = new GameConfig() { TickFrequency = 20 };
     private DateTime lastNetworkUpdateTime = DateTime.Now;
 
-    private float movesPerSecond = 15f;
+    private float movesPerSecond = 10f;
     private DateTime lastMoveTime = DateTime.Now;
 
     private List<NetworkConnection> clients = new List<NetworkConnection>();
@@ -29,6 +29,8 @@ public class SnakeServer : EntitySystem
     private PacketDeserializer packetDeserializer = new PacketDeserializer();
 
     private Queue<NetworkConnection> respawnQueue = new Queue<NetworkConnection>();
+
+    private byte gameTick = 0;
 
     protected ILogger logger;
 
@@ -49,24 +51,6 @@ public class SnakeServer : EntitySystem
 
     public override void OnUpdate(float deltaTime)
     {
-        if ((DateTime.Now - lastNetworkUpdateTime).TotalMilliseconds > gameConfig.TickFrequency)
-        {
-
-            foreach ((NetworkConnection connection, PacketSerializer serializer) in packetSerializers)
-            {
-                if (connection.IsInvalid) { continue; }
-
-                IWriteMessage packet = new WriteOnlyMessage();
-                if (serializer.BuildMessage(packet))
-                {
-                    Transport.SendToClient(packet, connection);
-                }
-            }
-
-            lastNetworkUpdateTime = DateTime.Now;
-        }
-        Transport.Update();
-
         if (DateTime.Now - lastMoveTime > TimeSpan.FromSeconds(1.0 / movesPerSecond))
         {
             lastMoveTime = DateTime.Now;
@@ -82,6 +66,25 @@ public class SnakeServer : EntitySystem
             NetworkConnection connection = respawnQueue.Dequeue();
             // Send respawn allowed
             SendToClient(new WriteOnlyMessage(), ServerToClient.RespawnAllowed, connection);
+        }
+
+        if (DateTime.Now - lastNetworkUpdateTime > TimeSpan.FromSeconds(1.0 / gameConfig.TickFrequency))
+        {
+            Transport.Update();
+
+            foreach ((NetworkConnection connection, PacketSerializer serializer) in packetSerializers)
+            {
+                if (connection.IsInvalid) { continue; }
+
+                IWriteMessage packet = new WriteOnlyMessage();
+                if (serializer.BuildMessage(gameTick, packet))
+                {
+                    Transport.SendToClient(packet, connection);
+                    gameTick++;
+                }
+            }
+
+            lastNetworkUpdateTime = DateTime.Now;
         }
     }
 
@@ -289,7 +292,7 @@ public class SnakeServer : EntitySystem
         //logger.LogVerbose($"Message received from {incomingMessage.Sender.Id}");
         //logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
 
-        var result = packetDeserializer.ReadIncoming(incomingMessage, (ClientToServer messageType, IReadMessage message) =>
+        packetDeserializer.ReadIncoming(incomingMessage, (ClientToServer messageType, IReadMessage message) =>
         {
             switch (messageType)
             {
@@ -312,12 +315,7 @@ public class SnakeServer : EntitySystem
                     HandleSendChatMessage(message);
                     break;
             }
-        });
-
-        foreach (var error in result.Errors)
-        {
-            logger.LogError(error.Message);
-        }
+        }, logger);
     }
 
     public void SendBoardMessage(byte x, byte y, Tile tile)

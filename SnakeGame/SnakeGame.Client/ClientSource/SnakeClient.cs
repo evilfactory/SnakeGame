@@ -18,6 +18,7 @@ public class SnakeClient : EntitySystem
 
     private DateTime lastNetworkUpdateTime = DateTime.Now;
 
+    private byte myClient;
     private Board board;
 
     protected ILogger logger;
@@ -94,7 +95,7 @@ public class SnakeClient : EntitySystem
     {
         if (board != null)
         {
-            SnakeRendering.DrawBoard(board);
+            SnakeRendering.DrawBoard(board, myClient);
         }
     }
 
@@ -218,6 +219,8 @@ public class SnakeClient : EntitySystem
     {
         AssignPlayerId assignPlayerId = new AssignPlayerId();
         assignPlayerId.Deserialize(message);
+
+        myClient = assignPlayerId.PlayerId;
 
         logger.LogInfo($"Received player id: {assignPlayerId}");
     }

@@ -17,10 +17,23 @@ public class SnakeRendering : EntitySystem
         camera.Add(new OrthographicCamera() { IsMain = true, ClearColor = Color.LightSkyBlue, ViewSize = 10 });
     }
 
-    public void DrawBoard(Board board)
+    public void DrawBoard(Board board, byte focusOn)
     {
-        camera.Get<OrthographicCamera>().ViewSize = Math.Max(board.Width, board.Height) / 1.5f;
-        camera.Get<Transform>().Position = new Vector3(board.Width / 2f, board.Height / 2f, 0);
+        Vector2 camPosition = new Vector2(board.Width / 2f, board.Height / 2f);
+
+        // Find where the head position is
+        for (byte x = 0; x < board.Width; x++)
+        {
+            for (byte y = 0; y < board.Height; y++)
+            {
+                Tile tile = board.GetResource(x, y);
+                if (tile.Type == TileType.SnakeHead && tile.PlayerId == focusOn)
+                {
+                    camPosition = new Vector2(x, y);
+                    break;
+                }
+            }
+        }
 
         RenderingService.Begin();
 
@@ -53,6 +66,9 @@ public class SnakeRendering : EntitySystem
         }
 
         RenderingService.End();
+
+        camera.Get<OrthographicCamera>().ViewSize = Math.Max(board.Width, board.Height) / 4f;
+        camera.Get<Transform>().Position = Vector3.Lerp(camera.Get<Transform>().Position, new Vector3(camPosition, 0), 0.1f);
     }
 
 }

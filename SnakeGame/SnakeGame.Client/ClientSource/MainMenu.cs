@@ -30,6 +30,14 @@ public class MainMenu : EntitySystem, IDrawGUI
             connectButton.RectTransform.MinSize = new Vector2(400, 100);
             new GUIText(new RectTransform(connectButton.RectTransform, new Vector2(1f, 1f), Anchor.Center, Pivot.Center), "Connect Localhost", 50, Color.White);
         }
+        {
+            var connectButton = new GUIButton(new RectTransform(list.RectTransform, new Vector2(0.5f, 0.1f), Anchor.TopCenter, Pivot.TopCenter), () =>
+            {
+                SnakeClient.Connect(IPEndPoint.Parse("201.8.218.209:3007"));
+            });
+            connectButton.RectTransform.MinSize = new Vector2(400, 100);
+            new GUIText(new RectTransform(connectButton.RectTransform, new Vector2(1f, 1f), Anchor.Center, Pivot.Center), "Connect EvilCloud", 50, Color.White);
+        }
     }
 
     public void OnDrawGUI(float deltaTime)

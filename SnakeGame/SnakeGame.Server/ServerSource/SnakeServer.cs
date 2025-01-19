@@ -17,6 +17,9 @@ public class SnakeServer : EntitySystem
     public Board Board { get; private set; }
     public List<Snake> Snakes { get; private set; }
 
+    private float movesPerSecond = 15f;
+    private DateTime lastMoveTime = DateTime.Now;
+
     private List<NetworkConnection> clients = new List<NetworkConnection>();
 
     private Dictionary<NetworkConnection, PacketSerializer> packetSerializers = new Dictionary<NetworkConnection, PacketSerializer>();
@@ -43,10 +46,10 @@ public class SnakeServer : EntitySystem
 
     public override void OnUpdate(float deltaTime)
     {
-        Transport.Update();
-
         foreach ((NetworkConnection connection, PacketSerializer serializer) in packetSerializers)
         {
+            if (connection.IsInvalid) { continue; }
+
             IWriteMessage packet = new WriteOnlyMessage();
             if (serializer.BuildMessage(packet))
             {
@@ -54,10 +57,16 @@ public class SnakeServer : EntitySystem
             }
         }
 
-        // Loop through snakes backwards to avoid concurrent modification
-        for (int i = Snakes.Count - 1; i >= 0; i--)
+        Transport.Update();
+
+        if (DateTime.Now - lastMoveTime > TimeSpan.FromSeconds(1.0 / movesPerSecond))
         {
-            MoveSnake(Snakes[i]);
+            lastMoveTime = DateTime.Now;
+
+            for (int i = Snakes.Count - 1; i >= 0; i--)
+            {
+                MoveSnake(Snakes[i]);
+            }
         }
 
         while (respawnQueue.Count > 0)
@@ -208,6 +217,14 @@ public class SnakeServer : EntitySystem
             Board.SetResource(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
             SendBoardMessage(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
             snake.BodyPositions.RemoveAt(indexToRemove);
+        }
+
+        IWriteMessage playerMovedMessage = new WriteOnlyMessage();
+        PlayerMoved playerMoved = new PlayerMoved() { Grew = grow, PlayerId = snake.PlayerId, X = snake.HeadPosition.X, Y = snake.HeadPosition.Y };
+        playerMoved.Serialize(playerMovedMessage);
+        foreach (NetworkConnection client in clients)
+        {
+            SendToClient(playerMovedMessage, ServerToClient.PlayerMoved, client);
         }
     }
 

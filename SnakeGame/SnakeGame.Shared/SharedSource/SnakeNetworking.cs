@@ -251,27 +251,29 @@ public class PlayerDied : NetMessage
 public class PlayerMoved : NetMessage
 {
     public byte PlayerId;
-    public Vector2 NewPosition;
+    public byte X;
+    public byte Y;
     public bool Grew;
 
     public override void Deserialize(IReadMessage message)
     {
         PlayerId = message.ReadByte();
-        NewPosition = new Vector2(message.ReadSingle(), message.ReadSingle());
-        Grew = message.ReadBoolean();
+        X = message.ReadByte();
+        Y = message.ReadByte();
+        Grew = message.ReadByte() == 0;
     }
 
     public override void Serialize(IWriteMessage message)
     {
         message.WriteByte(PlayerId);
-        message.WriteSingle(NewPosition.X);
-        message.WriteSingle(NewPosition.Y);
-        message.WriteBoolean(Grew);
+        message.WriteByte(X);
+        message.WriteByte(Y);
+        message.WriteByte((byte)(Grew ? 1 : 0));
     }
 
     public override string ToString()
     {
-        return $"PlayerMoved ( PlayerId: {PlayerId}, NewPosition: {NewPosition}, Grew: {Grew} )";
+        return $"PlayerMoved ( PlayerId: {PlayerId}, NewPosition: ({X},{Y}), Grew: {Grew} )";
     }
 }
 

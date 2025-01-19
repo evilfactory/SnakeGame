@@ -260,7 +260,7 @@ public class PlayerMoved : NetMessage
         PlayerId = message.ReadByte();
         X = message.ReadByte();
         Y = message.ReadByte();
-        Grew = message.ReadByte() == 0;
+        Grew = message.ReadByte() == 1;
     }
 
     public override void Serialize(IWriteMessage message)

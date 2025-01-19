@@ -29,9 +29,11 @@ public class SnakeServer : EntitySystem
     private Dictionary<NetworkConnection, PacketSerializer> packetSerializers = new Dictionary<NetworkConnection, PacketSerializer>();
     private PacketDeserializer packetDeserializer = new PacketDeserializer();
 
-    private Queue<NetworkConnection> respawnQueue = new Queue<NetworkConnection>();
+    private Queue<(NetworkConnection, DateTime)> respawnQueue = new Queue<(NetworkConnection, DateTime)>();
 
     private byte gameTick = 0;
+
+    private float respawnTime = 1f;
 
     protected ILogger logger;
 
@@ -48,6 +50,12 @@ public class SnakeServer : EntitySystem
 
         Board = new Board(64, 64);
         Snakes = new List<Snake>();
+
+        for (int x = 5; x < 50;  x++)
+        {
+            Board.SetResource((byte)x, 5, new Tile { Type = TileType.Wall, PlayerId = 0 });
+            Board.SetResource((byte)x, 8, new Tile { Type = TileType.Wall, PlayerId = 0 });
+        }
     }
 
     public override void OnUpdate(float deltaTime)
@@ -64,9 +72,17 @@ public class SnakeServer : EntitySystem
 
         while (respawnQueue.Count > 0)
         {
-            NetworkConnection connection = respawnQueue.Dequeue();
-            // Send respawn allowed
-            SendToClient(new WriteOnlyMessage(), ServerToClient.RespawnAllowed, connection);
+            (NetworkConnection connection, DateTime time) = respawnQueue.Peek();
+
+            if (DateTime.Now > time)
+            {
+                respawnQueue.Dequeue();
+                SpawnClient(connection);
+            }
+            else
+            {
+                break;
+            }
         }
 
         if (DateTime.Now - lastNetworkUpdateTime > TimeSpan.FromSeconds(1.0 / gameConfig.TickFrequency))
@@ -128,7 +144,7 @@ public class SnakeServer : EntitySystem
         Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
         SendBoardMessage(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
 
-        PlayerDied playerDied = new PlayerDied() { PlayerId = snake.PlayerId, RespawnTimeSeconds = 5 };
+        PlayerDied playerDied = new PlayerDied() { PlayerId = snake.PlayerId, RespawnTimeSeconds = (byte)respawnTime };
         IWriteMessage playerDiedMessage = new WriteOnlyMessage();
         playerDied.Serialize(playerDiedMessage);
 
@@ -141,7 +157,7 @@ public class SnakeServer : EntitySystem
 
         if (connection != null)
         {
-            respawnQueue.Enqueue(connection);
+            respawnQueue.Enqueue((connection, DateTime.Now + TimeSpan.FromSeconds(respawnTime)));
         }
     }
 
@@ -212,6 +228,11 @@ public class SnakeServer : EntitySystem
         if (tile.Type == TileType.Food)
         {
             grow = true;
+        }
+        else if (tile.Type == TileType.Wall)
+        {
+            KillSnake(snake);
+            return;
         }
 
         snake.BodyPositions.Insert(0, snake.HeadPosition);

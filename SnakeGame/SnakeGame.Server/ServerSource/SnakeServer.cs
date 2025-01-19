@@ -435,6 +435,8 @@ public class SnakeServer : EntitySystem
         // PlayerConnected
         foreach (NetworkConnection client in clients)
         {
+            if (client == message.Sender) { continue; }
+
             PlayerConnected playerConnected = new PlayerConnected() { PlayerId = client.Id, Name = $"Player {client.Id}" };
             IWriteMessage playerConnectedMessage = new WriteOnlyMessage();
             playerConnected.Serialize(playerConnectedMessage);

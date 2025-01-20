@@ -118,7 +118,7 @@ public class SnakeServer : EntitySystem
                 if (connection.IsInvalid) { continue; }
 
                 IWriteMessage packet = new WriteOnlyMessage();
-                if (serializer.BuildMessage(gameTick, packet))
+                if (serializer.BuildMessage(gameTick, packet, logger))
                 {
                     Transport.SendToClient(packet, connection);
                     gameTick++;

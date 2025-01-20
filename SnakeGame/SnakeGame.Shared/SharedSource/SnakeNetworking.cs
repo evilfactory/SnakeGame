@@ -465,7 +465,7 @@ public class PacketSerializer
     }
 #endif
 
-    public bool BuildMessage(byte gameTick, IWriteMessage packet)
+    public bool BuildMessage(byte gameTick, IWriteMessage packet, ILogger logger)
     {
         int groupCount = 0;
 
@@ -490,7 +490,7 @@ public class PacketSerializer
                 IWriteMessage queuedMessage = queue.Peek();
 
                 // Do we have enough space to write this message?
-                if (packet.LengthBytes + groupData.LengthBytes + allGroupData.LengthBytes + queuedMessage.LengthBytes > 1024)
+                if (packet.LengthBytes + groupData.LengthBytes + allGroupData.LengthBytes + queuedMessage.LengthBytes > 1024 || amount >= 255)
                 {
                     break;
                 }
@@ -500,6 +500,7 @@ public class PacketSerializer
                 groupData.WriteBytes(queuedMessage.Buffer, 0, queuedMessage.LengthBytes);
                 amount++;
             }
+
 
             if (amount > 0)
             {

@@ -87,7 +87,7 @@ public class SnakeClient : EntitySystem
             }
 
             IWriteMessage message = new WriteOnlyMessage();
-            if (packetSerializer.BuildMessage(gameTick, message))
+            if (packetSerializer.BuildMessage(gameTick, message, logger))
             {
                 Transport.SendToServer(message);
             }

@@ -47,7 +47,6 @@ partial class TcpTransport : Transport
         NetworkStream stream = client.GetStream();
         byte[] headerBuffer = new byte[2];
         byte[] bodyBuffer = new byte[1300 - headerBuffer.Length];
-        int bytesRead;
 
         try
         {
@@ -56,7 +55,7 @@ partial class TcpTransport : Transport
                 await stream.ReadExactlyAsync(headerBuffer, 0, headerBuffer.Length);
 
                 ReadOnlyMessage headerMessage = new ReadOnlyMessage(headerBuffer, false, 0, headerBuffer.Length);
-                UInt16 bodyLength = (UInt16)(headerMessage.ReadUInt16() + 2);
+                UInt16 bodyLength = (UInt16)(headerMessage.ReadUInt16() + 4);
 
                 await stream.ReadExactlyAsync(bodyBuffer, 0, bodyLength);
 

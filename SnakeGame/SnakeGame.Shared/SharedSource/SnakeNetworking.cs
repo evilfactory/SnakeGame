@@ -20,47 +20,50 @@ public enum ServerToClient : byte
     AssignPlayerId = 2,
     BoardReset = 3,
     BoardSet = 4,
-    PlayerConnected = 5,
-    PlayerDisconnected = 6,
-    PlayerSpawned = 7,
+    BoardRect = 5,
+    RespawnAllowed = 6,
+    PlayerDisconnected = 7,
     PlayerDied = 8,
-    PlayerMoved = 9,
-    RespawnAllowed = 10,
-    ChatMessageSent = 11,
+    PlayerConnected = 9,
+    PlayerSpawned = 10,
+    PlayerMoved = 11,
+    PlayerRenamed = 12,
+    ChatMessageSent = 13,
 }
 
 public enum ClientToServer : byte
 {
-    RequestLobbyInfo = 0,
-    Connecting = 1,
-    Disconnecting = 2,
-    FullUpdate = 3,
-    PlayerInput = 4,
-    SendChatMessage = 5
+    Connecting = 0,
+    Disconnecting = 1,
+    FullUpdate = 2,
+    PlayerInput = 3,
+    RequestLobbyInfo = 4,
+    ChangeName = 5,
+    SendChatMessage = 6
 }
 
 public class LobbyInformation : NetMessage
 {
+    public HostInfo HostInfo;
     public byte PlayerCount;
     public string Title;
     public string Description;
-    public HostInfo HostInfo;
 
     public override void Deserialize(IReadMessage message)
     {
+        HostInfo = new HostInfo();
+        HostInfo.Deserialize(message);
         PlayerCount = message.ReadByte();
         Title = message.ReadCharArray();
         Description = message.ReadCharArray();
-        HostInfo = new HostInfo();
-        HostInfo.Deserialize(message);
     }
 
     public override void Serialize(IWriteMessage message)
     {
+        HostInfo.Serialize(message);
         message.WriteByte(PlayerCount);
         message.WriteCharArray(Title);
         message.WriteCharArray(Description);
-        HostInfo.Serialize(message);
     }
 
     public override string ToString()
@@ -71,22 +74,19 @@ public class LobbyInformation : NetMessage
 
 public class Connecting : NetMessage
 {
-    public string Name;
     public HostInfo HostInfo;
     public override void Deserialize(IReadMessage message)
     {
-        Name = message.ReadCharArray();
         HostInfo = new HostInfo();
         HostInfo.Deserialize(message);
     }
     public override void Serialize(IWriteMessage message)
     {
-        message.WriteCharArray(Name);
         HostInfo.Serialize(message);
     }
     public override string ToString()
     {
-        return $"Connecting ( Name: {Name}, HostInfo: {HostInfo} )";
+        return $"Connecting ( HostInfo: {HostInfo} )";
     }
 }
 
@@ -277,6 +277,23 @@ public class PlayerMoved : NetMessage
     }
 }
 
+public class ChangeName : NetMessage
+{
+    public string NewName;
+    public override void Deserialize(IReadMessage message)
+    {
+        NewName = message.ReadCharArray();
+    }
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteCharArray(NewName);
+    }
+    public override string ToString()
+    {
+        return $"ChangeName ( NewName: {NewName} )";
+    }
+}
+
 public class SendChatMessage : NetMessage
 {
     public byte PlayerId;
@@ -396,18 +413,27 @@ public class GameConfig : NetMessage
     }
 }
 
-public class PacketDeserializer
+public class PacketSerializer
 {
+    public byte CurrentGameTick { get; set; }
+
+    private byte lastSequenceNumber = 0;
+
 #if SERVER
     public void ReadIncoming(IReadMessage message, Action<ClientToServer, IReadMessage> read, ILogger logger)
 #elif CLIENT
     public void ReadIncoming(IReadMessage message, Action<ServerToClient, IReadMessage> read, ILogger logger)
 #endif
     {
-        byte clientTick = message.ReadByte();
+        byte sequenceNumber = message.ReadByte();
+        byte acknowledgeNumber = message.ReadByte();
+
+        lastSequenceNumber = sequenceNumber;
+
+        byte gameTick = message.ReadByte();
         byte groupCount = message.ReadByte();
 
-        logger.LogVerbose($"New packet being read: clientTick = {clientTick}, groupCount = {groupCount}");
+        logger.LogVerbose($"New packet being read: sequenceNumber = {sequenceNumber}, acknowledgeNumber = {acknowledgeNumber}, gameTick = {gameTick}, groupCount = {groupCount}");
 
         for (int i = 0; i < groupCount; i++)
         {
@@ -433,10 +459,7 @@ public class PacketDeserializer
             }
         }
     }
-}
 
-public class PacketSerializer
-{
 #if SERVER
     private Dictionary<ServerToClient, Queue<IWriteMessage>> queuedSendMessages = new Dictionary<ServerToClient, Queue<IWriteMessage>>();
 #elif CLIENT
@@ -465,7 +488,7 @@ public class PacketSerializer
     }
 #endif
 
-    public bool BuildMessage(byte gameTick, IWriteMessage packet, ILogger logger)
+    public bool BuildMessage(IWriteMessage packet, ILogger logger)
     {
         int groupCount = 0;
 
@@ -512,9 +535,15 @@ public class PacketSerializer
             }
         }
 
+        // Header
         packet.WriteUInt16((UInt16)allGroupData.LengthBytes);
-        packet.WriteByte(gameTick);
+        packet.WriteByte(CurrentGameTick); // seq_num
+        packet.WriteByte(lastSequenceNumber); // ack_num
+
+        // Body Header
+        packet.WriteByte(CurrentGameTick); // game tick
         packet.WriteByte((byte)groupCount);
+
         packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
 
         return groupCount > 0;

@@ -27,7 +27,6 @@ public class SnakeServer : EntitySystem
     private List<NetworkConnection> clients = new List<NetworkConnection>();
 
     private Dictionary<NetworkConnection, PacketSerializer> packetSerializers = new Dictionary<NetworkConnection, PacketSerializer>();
-    private PacketDeserializer packetDeserializer = new PacketDeserializer();
 
     private Queue<(NetworkConnection, DateTime)> respawnQueue = new Queue<(NetworkConnection, DateTime)>();
 
@@ -118,7 +117,8 @@ public class SnakeServer : EntitySystem
                 if (connection.IsInvalid) { continue; }
 
                 IWriteMessage packet = new WriteOnlyMessage();
-                if (serializer.BuildMessage(gameTick, packet, logger))
+                serializer.CurrentGameTick = gameTick;
+                if (serializer.BuildMessage(packet, logger))
                 {
                     Transport.SendToClient(packet, connection);
                     gameTick++;
@@ -309,7 +309,8 @@ public class SnakeServer : EntitySystem
 
         if (!packetSerializers.ContainsKey(connection))
         {
-            packetSerializers[connection] = new PacketSerializer();
+            logger.LogWarning($"Tried to send message to connection without a packet serializer {connection}");
+            return;
         }
 
         packetSerializers[connection].QueueMessage(message, type);
@@ -317,6 +318,8 @@ public class SnakeServer : EntitySystem
 
     public void OnClientConnected(NetworkConnection connection)
     {
+        packetSerializers[connection] = new PacketSerializer();
+
         logger.LogInfo($"Client connected: {connection.Id}");
     }
 
@@ -336,16 +339,21 @@ public class SnakeServer : EntitySystem
 
     public void OnMessageReceived(IReadMessage incomingMessage)
     {
-        logger.LogVerbose($"Message received from {incomingMessage.Sender.Id}");
-        logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
+        //logger.LogVerbose($"Message received from {incomingMessage.Sender.Id}");
+        //logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
+
+        if (!packetSerializers.ContainsKey(incomingMessage.Sender))
+        {
+            logger.LogWarning($"Received message from connection without a packet serializer {incomingMessage.Sender}");
+            return;
+        }
+
+        PacketSerializer packetDeserializer = packetSerializers[incomingMessage.Sender];
 
         packetDeserializer.ReadIncoming(incomingMessage, (ClientToServer messageType, IReadMessage message) =>
         {
             switch (messageType)
             {
-                case ClientToServer.RequestLobbyInfo:
-                    HandleRequestLobbyInfo(message);
-                    break;
                 case ClientToServer.Connecting:
                     HandleConnecting(message);
                     break;
@@ -357,6 +365,12 @@ public class SnakeServer : EntitySystem
                     break;
                 case ClientToServer.PlayerInput:
                     HandlePlayerInput(message);
+                    break;
+                case ClientToServer.RequestLobbyInfo:
+                    HandleRequestLobbyInfo(message);
+                    break;
+                case ClientToServer.ChangeName:
+                    HandleChangeName(message);
                     break;
                 case ClientToServer.SendChatMessage:
                     HandleSendChatMessage(message);
@@ -399,7 +413,7 @@ public class SnakeServer : EntitySystem
             HostInfo = new HostInfo()
             {
                 VersionMajor = 0,
-                VersionMinor = 8,
+                VersionMinor = 10,
                 AgentString = "Evil Snake Server"
             }
         };
@@ -547,6 +561,13 @@ public class SnakeServer : EntitySystem
     private void HandleDisconnecting(IReadMessage message)
     {
         Transport.DisconnectClient(message.Sender, DisconnectReason.Unknown);
+    }
+
+    private void HandleChangeName(IReadMessage message)
+    {
+        ChangeName changeName = new ChangeName();
+        changeName.Deserialize(message);
+        logger.LogInfo($"Received name change from {message.Sender}: {changeName}");
     }
 
     private void HandleSendChatMessage(IReadMessage message)

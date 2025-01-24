@@ -25,11 +25,8 @@ public class SnakeClient : EntitySystem
     protected ILogger logger;
 
     private PacketSerializer packetSerializer = new PacketSerializer();
-    private PacketDeserializer packetDeserializer = new PacketDeserializer();
 
     private bool connected = false;
-
-    private byte gameTick = 0;
 
     public override void OnInitialize()
     {
@@ -87,14 +84,12 @@ public class SnakeClient : EntitySystem
             }
 
             IWriteMessage message = new WriteOnlyMessage();
-            if (packetSerializer.BuildMessage(gameTick, message, logger))
+            if (packetSerializer.BuildMessage(message, logger))
             {
                 Transport.SendToServer(message);
             }
 
             lastNetworkUpdateTime = DateTime.Now;
-
-            gameTick++;
         }
     }
 
@@ -132,12 +127,11 @@ public class SnakeClient : EntitySystem
 
         Connecting connecting = new Connecting()
         {
-            Name = "Evil",
             HostInfo = new HostInfo()
             {
                 AgentString = "Evil Snake Client",
                 VersionMajor = 0,
-                VersionMinor = 8
+                VersionMinor = 10
             }
         };
 
@@ -161,7 +155,7 @@ public class SnakeClient : EntitySystem
         //logger.LogInfo($"Message received from server");
         //logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
 
-        packetDeserializer.ReadIncoming(incomingMessage, (ServerToClient messageType, IReadMessage message) =>
+        packetSerializer.ReadIncoming(incomingMessage, (ServerToClient messageType, IReadMessage message) =>
         {
             switch (messageType)
             {

@@ -450,18 +450,18 @@ public class SnakeServer : EntitySystem
         assignPlayerId.Serialize(assignPlayerIdMessage);
         SendToClient(assignPlayerIdMessage, ServerToClient.AssignPlayerId, message.Sender);
 
-        PlayerRenamed playerRenamed = new PlayerRenamed() { PlayerId = message.Sender.Id, NewName = $"Player {message.Sender.Id}" };
-        IWriteMessage playerRenamedMessage = new WriteOnlyMessage();
-        playerRenamed.Serialize(playerRenamedMessage);
-
         PlayerConnected playerConnected = new PlayerConnected() { PlayerId = message.Sender.Id };
         IWriteMessage playerConnectedMessage = new WriteOnlyMessage();
         playerConnected.Serialize(playerConnectedMessage);
 
+        PlayerRenamed playerRenamed = new PlayerRenamed() { PlayerId = message.Sender.Id, NewName = $"Player {message.Sender.Id}" };
+        IWriteMessage playerRenamedMessage = new WriteOnlyMessage();
+        playerRenamed.Serialize(playerRenamedMessage);
+
         foreach (NetworkConnection client in clients)
         {
             SendToClient(playerConnectedMessage, ServerToClient.PlayerConnected, client);
-            SendToClient(playerRenamedMessage, ServerToClient.PlayerRenamed, message.Sender);
+            SendToClient(playerRenamedMessage, ServerToClient.PlayerRenamed, client);
         }
     }
 

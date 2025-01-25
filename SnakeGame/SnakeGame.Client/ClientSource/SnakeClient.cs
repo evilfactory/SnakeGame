@@ -192,6 +192,9 @@ public class SnakeClient : EntitySystem
                 case ServerToClient.RespawnAllowed:
                     HandleRespawnAllowed(message);
                     break;
+                case ServerToClient.PlayerRenamed:
+                    HandlePlayerRenamed(message);
+                    break;
             }
         }, logger);
     }
@@ -292,5 +295,12 @@ public class SnakeClient : EntitySystem
         SendToServer(ClientToServer.PlayerInput, playerInput);
 
         logger.LogInfo($"Received respawn allowed");
+    }
+
+    private void HandlePlayerRenamed(IReadMessage message)
+    {
+        PlayerRenamed playerRenamed = new PlayerRenamed();
+        playerRenamed.Deserialize(message);
+        logger.LogInfo($"Received player renamed: {playerRenamed}");
     }
 }

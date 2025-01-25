@@ -574,12 +574,11 @@ public class SnakeServer : EntitySystem
 
     private void HandleSendChatMessage(IReadMessage message)
     {
-        SendChatMessage chatMessage = new SendChatMessage();
-        chatMessage.Deserialize(message);
+        string textMessage = message.ReadCharArray();
 
-        logger.LogInfo($"Received chat message from {message.Sender}: {chatMessage.Message}");
+        logger.LogInfo($"Received chat message from {message.Sender}: {textMessage}");
 
-        SendChatMessage chatMessageResponse = new SendChatMessage() { PlayerId = chatMessage.PlayerId, Message = chatMessage.Message };
+        SendChatMessage chatMessageResponse = new SendChatMessage() { PlayerId = message.Sender.Id, Message = textMessage };
         IWriteMessage chatMessageResponseMessage = new WriteOnlyMessage();
         chatMessageResponse.Serialize(chatMessageResponseMessage);
 

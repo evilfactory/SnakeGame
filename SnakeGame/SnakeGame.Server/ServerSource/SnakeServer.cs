@@ -450,13 +450,18 @@ public class SnakeServer : EntitySystem
         assignPlayerId.Serialize(assignPlayerIdMessage);
         SendToClient(assignPlayerIdMessage, ServerToClient.AssignPlayerId, message.Sender);
 
-        PlayerConnected playerConnected = new PlayerConnected() { PlayerId = message.Sender.Id, Name = $"Player {message.Sender.Id}" };
+        PlayerRenamed playerRenamed = new PlayerRenamed() { PlayerId = message.Sender.Id, NewName = $"Player {message.Sender.Id}" };
+        IWriteMessage playerRenamedMessage = new WriteOnlyMessage();
+        playerRenamed.Serialize(playerRenamedMessage);
+
+        PlayerConnected playerConnected = new PlayerConnected() { PlayerId = message.Sender.Id };
         IWriteMessage playerConnectedMessage = new WriteOnlyMessage();
         playerConnected.Serialize(playerConnectedMessage);
 
         foreach (NetworkConnection client in clients)
         {
             SendToClient(playerConnectedMessage, ServerToClient.PlayerConnected, client);
+            SendToClient(playerRenamedMessage, ServerToClient.PlayerRenamed, message.Sender);
         }
     }
 
@@ -499,10 +504,15 @@ public class SnakeServer : EntitySystem
         {
             if (client == message.Sender) { continue; }
 
-            PlayerConnected playerConnected = new PlayerConnected() { PlayerId = client.Id, Name = $"Player {client.Id}" };
+            PlayerConnected playerConnected = new PlayerConnected() { PlayerId = client.Id };
             IWriteMessage playerConnectedMessage = new WriteOnlyMessage();
             playerConnected.Serialize(playerConnectedMessage);
             SendToClient(playerConnectedMessage, ServerToClient.PlayerConnected, message.Sender);
+
+            IWriteMessage playerRenamedMessage = new WriteOnlyMessage();
+            PlayerRenamed playerRenamed = new PlayerRenamed() { PlayerId = client.Id, NewName = $"Player {client.Id}" };
+            playerRenamed.Serialize(playerRenamedMessage);
+            SendToClient(playerRenamedMessage, ServerToClient.PlayerRenamed, message.Sender);
         }
 
         // PlayerSpawned
@@ -569,7 +579,7 @@ public class SnakeServer : EntitySystem
     {
         ChangeName changeName = new ChangeName();
         changeName.Deserialize(message);
-        logger.LogInfo($"Received name change from {message.Sender}: {changeName}");
+        logger.LogInfo($"Received name change to {message.Sender}: {changeName}");
     }
 
     private void HandleSendChatMessage(IReadMessage message)

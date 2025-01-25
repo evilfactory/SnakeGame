@@ -163,22 +163,19 @@ public class BoardSet : NetMessage
 public class PlayerConnected : NetMessage
 {
     public byte PlayerId;
-    public string Name;
     public override void Deserialize(IReadMessage message)
     {
         PlayerId = message.ReadByte();
-        Name = message.ReadCharArray();
     }
 
     public override void Serialize(IWriteMessage message)
     {
         message.WriteByte(PlayerId);
-        message.WriteCharArray(Name);
     }
 
     public override string ToString()
     {
-        return $"PlayerConnected ( PlayerId: {PlayerId}, Name: {Name} )";
+        return $"PlayerConnected ( PlayerId: {PlayerId} )";
     }
 }
 
@@ -274,6 +271,26 @@ public class PlayerMoved : NetMessage
     public override string ToString()
     {
         return $"PlayerMoved ( PlayerId: {PlayerId}, NewPosition: ({X},{Y}), Grew: {Grew} )";
+    }
+}
+
+public class PlayerRenamed : NetMessage
+{
+    public byte PlayerId;
+    public string NewName;
+    public override void Deserialize(IReadMessage message)
+    {
+        PlayerId = message.ReadByte();
+        NewName = message.ReadCharArray();
+    }
+    public override void Serialize(IWriteMessage message)
+    {
+        message.WriteByte(PlayerId);
+        message.WriteCharArray(NewName);
+    }
+    public override string ToString()
+    {
+        return $"PlayerRenamed ( PlayerId: {PlayerId}, NewName: {NewName} )";
     }
 }
 

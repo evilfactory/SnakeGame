@@ -536,7 +536,7 @@ public class PacketSerializer
         }
 
         // Header
-        packet.WriteUInt16((UInt16)allGroupData.LengthBytes);
+        packet.WriteUInt16((UInt16)(allGroupData.LengthBytes + 2));
         packet.WriteByte(CurrentGameTick); // seq_num
         packet.WriteByte(lastSequenceNumber); // ack_num
 

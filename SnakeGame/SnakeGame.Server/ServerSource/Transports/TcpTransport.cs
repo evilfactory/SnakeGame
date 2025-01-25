@@ -140,7 +140,7 @@ partial class TcpTransport : Transport
                 await stream.ReadExactlyAsync(headerBuffer, 0, headerBuffer.Length);
 
                 ReadOnlyMessage headerMessage = new ReadOnlyMessage(headerBuffer, false, 0, headerBuffer.Length);
-                UInt16 bodyLength = (UInt16)(headerMessage.ReadUInt16() + 4);
+                UInt16 bodyLength = (UInt16)(headerMessage.ReadUInt16() + 2);
 
                 await stream.ReadExactlyAsync(bodyBuffer, 0, bodyLength);
 

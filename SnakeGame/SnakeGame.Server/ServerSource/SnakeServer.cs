@@ -120,6 +120,8 @@ public class SnakeServer : EntitySystem
                 serializer.CurrentGameTick = gameTick;
                 if (serializer.BuildMessage(packet, logger))
                 {
+                    logger.LogVerbose($"Sending packet to {connection.Id}: {string.Join(" ", packet.Buffer.Take(packet.LengthBytes).Select(b => b.ToString("X2")))}");
+
                     Transport.SendToClient(packet, connection);
                     gameTick++;
                 }
@@ -340,7 +342,7 @@ public class SnakeServer : EntitySystem
     public void OnMessageReceived(IReadMessage incomingMessage)
     {
         logger.LogVerbose($"Message received from {incomingMessage.Sender.Id}");
-        logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Select(b => b.ToString("X2"))));
+        logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Take(incomingMessage.LengthBytes).Select(b => b.ToString("X2"))));
 
         if (!packetSerializers.ContainsKey(incomingMessage.Sender))
         {

@@ -26,7 +26,7 @@ public class BaseGameMode : GameMode, IReceiveClientInput
 
     public override void Update()
     {
-        if (Sim.CurrentTick % 3 == 0)
+        if (Sim.CurrentTick % 1 == 0)
         {
             for (int i = 0; i < Sim.State.Snakes.Count; i++)
             {

@@ -112,24 +112,9 @@ public class BaseGameMode : GameMode, IReceiveClientInput
                 break;
         }
 
-        // Check if the new head position is out of bounds and teleport the snake to the other side of the board
-        if (newHeadPosition.X <= 0)
-        {
-            newHeadPosition.X = (byte)(Sim.State.Board.Width - 1);
-        }
-        else if (newHeadPosition.X >= Sim.State.Board.Width)
-        {
-            newHeadPosition.X = 0;
-        }
+        newHeadPosition.X = (byte)(newHeadPosition.X % Sim.State.Board.Width);
+        newHeadPosition.Y = (byte)(newHeadPosition.Y % Sim.State.Board.Height);
 
-        if (newHeadPosition.Y <= 0)
-        {
-            newHeadPosition.Y = (byte)(Sim.State.Board.Height - 1);
-        }
-        else if (newHeadPosition.Y >= Sim.State.Board.Height)
-        {
-            newHeadPosition.Y = 0;
-        }
 
         // Check if the head position will end up in another snake
         foreach (Snake otherSnake in Sim.State.Snakes)

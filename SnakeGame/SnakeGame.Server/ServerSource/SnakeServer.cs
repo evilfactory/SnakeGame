@@ -270,7 +270,7 @@ public class SnakeServer : EntitySystem
             HostInfo = new HostInfo()
             {
                 VersionMajor = 0,
-                VersionMinor = 10,
+                VersionMinor = 11,
                 AgentString = "Evil Snake Server"
             }
         };

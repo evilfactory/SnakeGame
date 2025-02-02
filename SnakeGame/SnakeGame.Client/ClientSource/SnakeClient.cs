@@ -133,7 +133,7 @@ public class SnakeClient : EntitySystem
             {
                 AgentString = "Evil Snake Client",
                 VersionMajor = 0,
-                VersionMinor = 10
+                VersionMinor = 11
             }
         };
 

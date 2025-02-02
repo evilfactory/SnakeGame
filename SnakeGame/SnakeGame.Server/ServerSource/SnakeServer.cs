@@ -5,6 +5,11 @@ using TcpTransport = SnakeGame.TcpTransport;
 
 namespace SnakeGame;
 
+public interface IReceiveClientInput : IEvent
+{
+    void ReceiveInput(Client client, PlayerInput input);
+}
+
 public class SnakeServer : EntitySystem
 {
     private class QueuedSendMessage
@@ -16,6 +21,11 @@ public class SnakeServer : EntitySystem
     public Simulation Simulation { get; private set; }
 
     public Transport Transport { get; private set; }
+
+    public List<Client> Clients => clients;
+
+    [Dependency]
+    protected EventSystem EventSystem = default!;
 
     private GameConfig gameConfig = new GameConfig() { TickFrequency = 20 };
     private DateTime lastNetworkUpdateTime = DateTime.Now;
@@ -38,7 +48,11 @@ public class SnakeServer : EntitySystem
         Transport.OnMessageReceived = OnMessageReceived;
 
         GameMode = new BaseGameMode();
-        GameMode.Clients = clients;
+
+        IoCManager.InjectDependencies(GameMode);
+        EventSystem.SubscribeAll(GameMode);
+
+        GameMode.Server = this;
 
         Simulation = new Simulation();
 
@@ -367,9 +381,6 @@ public class SnakeServer : EntitySystem
             SendToClient(playerSpawnedMessage, ServerToClient.PlayerSpawned, message.Sender);
         }
 
-        // RespawnAllowed
-        SendToClient(new WriteOnlyMessage(), ServerToClient.RespawnAllowed, message.Sender);
-
         Client syncingClient = clients.Where(c => c.Connection == message.Sender).First();
         syncingClient.IsSynced = true;
         syncingClient.LastTick = Simulation.CurrentTick;
@@ -386,7 +397,7 @@ public class SnakeServer : EntitySystem
         Client client = clients.Where(c => c.Connection == message.Sender).First();
         if (client != null)
         {
-            GameMode.ReceiveInput(client, playerInput);
+            EventSystem.PublishEvent<IReceiveClientInput>(x => x.ReceiveInput(client, playerInput));
         }
     }
 

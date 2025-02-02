@@ -1,10 +1,11 @@
+using MalignEngine;
 using Silk.NET.Maths;
 
 namespace SnakeGame;
 
 public abstract class GameMode
 {
-    public List<Client> Clients;
+    public SnakeServer Server; // TODO: redesign this
 
     protected Simulation Sim;
 
@@ -12,10 +13,9 @@ public abstract class GameMode
 
     public abstract void Update();
     public abstract void End();
-    public abstract void ReceiveInput(Client client, PlayerInput input);
 }
 
-public class BaseGameMode : GameMode
+public class BaseGameMode : GameMode, IReceiveClientInput
 {
     public override void Start(Simulation simulation)
     {
@@ -43,6 +43,15 @@ public class BaseGameMode : GameMode
                 Sim.PushEvent(new BoardSetEvent() { X = x, Y = y, Tile = new Tile() { Type = TileType.Food, PlayerId = 0 } });
             }
         }
+
+        foreach (Client client in Server.Clients)
+        {
+            bool spawned = Sim.State.Snakes.Exists(s => s.PlayerId == client.Id);
+            if (!spawned)
+            {
+                Server.SendToClient(new WriteOnlyMessage(), ServerToClient.RespawnAllowed, client.Connection);
+            }
+        }
     }
 
     public override void End()
@@ -50,7 +59,7 @@ public class BaseGameMode : GameMode
 
     }
 
-    public override void ReceiveInput(Client client, PlayerInput input)
+    public virtual void ReceiveInput(Client client, PlayerInput input)
     {
         if (input == PlayerInput.Respawn)
         {
@@ -63,6 +72,23 @@ public class BaseGameMode : GameMode
             if (!Sim.State.Snakes.Exists(s => s.PlayerId == client.Id)) { return; }
 
             Sim.PushEvent(new SnakeInputEvent() { PlayerId = client.Id, Input = input });
+        }
+    }
+
+    private void KillSnakeAndSpawnFood(Snake snake)
+    {
+        Sim.PushEvent(new SnakeKillEvent() { PlayerId = snake.PlayerId });
+
+        for (int i = 0; i < snake.Positions.Count; i++)
+        {
+            if (Random.Shared.Next(0, 100) > 50)
+            {
+                Sim.PushEvent(new BoardSetEvent() { X = snake.Positions[i].X, Y = snake.Positions[i].Y, Tile = new Tile() { Type = TileType.Empty, PlayerId = 0 } });
+            }
+            else
+            {
+                Sim.PushEvent(new BoardSetEvent() { X = snake.Positions[i].X, Y = snake.Positions[i].Y, Tile = new Tile() { Type = TileType.Food, PlayerId = 0 } });
+            }
         }
     }
 
@@ -108,19 +134,17 @@ public class BaseGameMode : GameMode
         // Check if the head position will end up in another snake
         foreach (Snake otherSnake in Sim.State.Snakes)
         {
-            if (otherSnake.PlayerId == snake.PlayerId) { continue; }
-
             if (otherSnake.Positions[0] == newHeadPosition)
             {
-                Sim.PushEvent(new SnakeKillEvent() { PlayerId = snake.PlayerId });
-                Sim.PushEvent(new SnakeKillEvent() { PlayerId = otherSnake.PlayerId });
+                KillSnakeAndSpawnFood(snake);
+                KillSnakeAndSpawnFood(otherSnake);
 
                 return;
             }
 
             if (otherSnake.Positions.Contains(newHeadPosition))
             {
-                Sim.PushEvent(new SnakeKillEvent() { PlayerId = snake.PlayerId });
+                KillSnakeAndSpawnFood(snake);
                 return;
             }
         }

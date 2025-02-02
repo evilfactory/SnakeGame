@@ -43,16 +43,17 @@ public class Board
     {
         return grid[x, y] ?? new Tile() { PlayerId = 0, Type = TileType.Empty };
     }
-}
 
-public class Snake
-{
-    public byte PlayerId;
-
-    public Vector2D<byte> HeadPosition;
-    public List<Vector2D<byte>> BodyPositions = new List<Vector2D<byte>>();
-
-    public bool Killed = false;
-
-    public PlayerInput Input;
+    public Board Clone()
+    {
+        var clone = new Board(Width, Height);
+        for (byte x = 0; x < Width; x++)
+        {
+            for (byte y = 0; y < Height; y++)
+            {
+                clone.SetResource(x, y, GetResource(x, y));
+            }
+        }
+        return clone;
+    }
 }

@@ -72,7 +72,7 @@ public class LobbyInformation : NetMessage
     }
 }
 
-public class Connecting : NetMessage
+public class ConnectingNetMessage : NetMessage
 {
     public HostInfo HostInfo;
     public override void Deserialize(IReadMessage message)
@@ -110,7 +110,7 @@ public class AssignPlayerId : NetMessage
     }
 }
 
-public class BoardReset : NetMessage
+public class BoardResetNetMessage : NetMessage
 {
     public byte Width;
     public byte Height;
@@ -202,7 +202,7 @@ public class PlayerDisconnected : NetMessage
     }
 }
 
-public class PlayerSpawned : NetMessage
+public class PlayerSpawnedNetMessage : NetMessage
 {
     public byte PlayerId;
 
@@ -222,7 +222,7 @@ public class PlayerSpawned : NetMessage
     }
 }
 
-public class PlayerDied : NetMessage
+public class PlayerDiedNetMessage : NetMessage
 {
     public byte PlayerId;
     public byte RespawnTimeSeconds;
@@ -245,7 +245,7 @@ public class PlayerDied : NetMessage
     }
 }
 
-public class PlayerMoved : NetMessage
+public class PlayerMovedNetMessage : NetMessage
 {
     public byte PlayerId;
     public byte X;
@@ -432,7 +432,7 @@ public class GameConfig : NetMessage
 
 public class PacketSerializer
 {
-    public byte CurrentGameTick { get; set; }
+    public uint CurrentGameTick { get; set; }
 
     private byte lastSequenceNumber = 0;
 
@@ -447,8 +447,9 @@ public class PacketSerializer
 
         lastSequenceNumber = sequenceNumber;
 
-        byte gameTick = message.ReadByte();
+        UInt16 gameTick = message.ReadUInt16();
         byte groupCount = message.ReadByte();
+        message.ReadByte(); // padding
 
         logger.LogVerbose($"New packet being read: sequenceNumber = {sequenceNumber}, acknowledgeNumber = {acknowledgeNumber}, gameTick = {gameTick}, groupCount = {groupCount}");
 
@@ -553,13 +554,14 @@ public class PacketSerializer
         }
 
         // Header
-        packet.WriteUInt16((UInt16)(allGroupData.LengthBytes + 2));
-        packet.WriteByte(CurrentGameTick); // seq_num
+        packet.WriteUInt16((UInt16)(allGroupData.LengthBytes + 4));
+        packet.WriteByte((byte)(CurrentGameTick % 255)); // seq_num
         packet.WriteByte(lastSequenceNumber); // ack_num
 
         // Body Header
-        packet.WriteByte(CurrentGameTick); // game tick
+        packet.WriteUInt16((UInt16)CurrentGameTick); // game tick
         packet.WriteByte((byte)groupCount);
+        packet.WriteByte(69); // padding
 
         packet.WriteBytes(allGroupData.Buffer, 0, allGroupData.LengthBytes);
 

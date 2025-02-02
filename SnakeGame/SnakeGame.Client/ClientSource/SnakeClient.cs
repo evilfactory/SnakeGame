@@ -28,6 +28,9 @@ public class SnakeClient : EntitySystem
 
     private bool connected = false;
 
+    private bool inputChanged = false;
+    private PlayerInput lastPlayerInput;
+
     public override void OnInitialize()
     {
         logger = LoggerService.GetSawmill("snake-client");
@@ -49,38 +52,37 @@ public class SnakeClient : EntitySystem
             return;
         }
 
-        PlayerInput playerInput = PlayerInput.Up;
-        bool inputReceived = false;
-
         if (InputSystem.IsKeyDown(Key.W))
         {
-            playerInput = PlayerInput.Up;
-            inputReceived = true;
+            lastPlayerInput = PlayerInput.Up;
+            inputChanged = true;
         }
         else if (InputSystem.IsKeyDown(Key.S))
         {
-            playerInput = PlayerInput.Down;
-            inputReceived = true;
+            inputChanged = true;
+            lastPlayerInput = PlayerInput.Down;
         }
         else if (InputSystem.IsKeyDown(Key.A))
         {
-            playerInput = PlayerInput.Left;
-            inputReceived = true;
+            inputChanged = true;
+            lastPlayerInput = PlayerInput.Left;
         }
         else if (InputSystem.IsKeyDown(Key.D))
         {
-            playerInput = PlayerInput.Right;
-            inputReceived = true;
+            inputChanged = true;
+            lastPlayerInput = PlayerInput.Right;
         }
 
         // Only send a message every gameConfig.TickFrequency
         if (DateTime.Now - lastNetworkUpdateTime > TimeSpan.FromSeconds(1.0 / gameConfig.TickFrequency))
         {
-            if (inputReceived)
+            if (inputChanged)
             {
                 IWriteMessage inputMessage = new WriteOnlyMessage();
-                inputMessage.WriteByte((byte)playerInput);
+                inputMessage.WriteByte((byte)lastPlayerInput);
                 SendToServer(ClientToServer.PlayerInput, inputMessage);
+
+                inputChanged = false;
             }
 
             IWriteMessage message = new WriteOnlyMessage();
@@ -125,7 +127,7 @@ public class SnakeClient : EntitySystem
 
         SendToServer(ClientToServer.RequestLobbyInfo, new WriteOnlyMessage());
 
-        Connecting connecting = new Connecting()
+        ConnectingNetMessage connecting = new ConnectingNetMessage()
         {
             HostInfo = new HostInfo()
             {
@@ -226,7 +228,7 @@ public class SnakeClient : EntitySystem
 
     private void HandleBoardReset(IReadMessage message)
     {
-        BoardReset boardReset = new BoardReset();
+        BoardResetNetMessage boardReset = new BoardResetNetMessage();
         boardReset.Deserialize(message);
 
         board = new Board(boardReset.Width, boardReset.Height);
@@ -266,7 +268,7 @@ public class SnakeClient : EntitySystem
 
     private void HandlePlayerSpawned(IReadMessage message)
     {
-        PlayerSpawned playerSpawned = new PlayerSpawned();
+        PlayerSpawnedNetMessage playerSpawned = new PlayerSpawnedNetMessage();
         playerSpawned.Deserialize(message);
 
         logger.LogInfo($"Received player spawned: {playerSpawned}");
@@ -274,7 +276,7 @@ public class SnakeClient : EntitySystem
 
     private void HandlePlayerDied(IReadMessage message)
     {
-        PlayerDied playerDied = new PlayerDied();
+        PlayerDiedNetMessage playerDied = new PlayerDiedNetMessage();
         playerDied.Deserialize(message);
 
         logger.LogInfo($"Received player died: {playerDied}");
@@ -282,7 +284,7 @@ public class SnakeClient : EntitySystem
 
     private void HandlePlayerMoved(IReadMessage message)
     {
-        PlayerMoved playerMoved = new PlayerMoved();
+        PlayerMovedNetMessage playerMoved = new PlayerMovedNetMessage();
         playerMoved.Deserialize(message);
 
         logger.LogInfo($"Received player moved: {playerMoved}");

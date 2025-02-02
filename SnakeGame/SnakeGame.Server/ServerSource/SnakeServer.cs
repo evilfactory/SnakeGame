@@ -1,5 +1,6 @@
 ﻿using MalignEngine;
 using Silk.NET.Maths;
+using System.Data.Common;
 using TcpTransport = SnakeGame.TcpTransport;
 
 namespace SnakeGame;
@@ -11,31 +12,17 @@ public class SnakeServer : EntitySystem
         public IWriteMessage Message { get; set; }
     }
 
-    [Dependency]
-    protected IUpdateLoop UpdateLoop = default!;
+    public GameMode GameMode { get; private set; }
+    public Simulation Simulation { get; private set; }
 
     public Transport Transport { get; private set; }
-    public Board Board { get; private set; }
-    public List<Snake> Snakes { get; private set; }
 
     private GameConfig gameConfig = new GameConfig() { TickFrequency = 20 };
     private DateTime lastNetworkUpdateTime = DateTime.Now;
 
-    private float movesPerSecond = 10f;
-    private DateTime lastMoveTime = DateTime.Now;
-
-    private List<NetworkConnection> clients = new List<NetworkConnection>();
+    private List<Client> clients = new List<Client>();
 
     private Dictionary<NetworkConnection, PacketSerializer> packetSerializers = new Dictionary<NetworkConnection, PacketSerializer>();
-
-    private Queue<(NetworkConnection, DateTime)> respawnQueue = new Queue<(NetworkConnection, DateTime)>();
-
-    private byte gameTick = 0;
-
-    private float respawnTime = 1f;
-
-    private float foodSpawnTime = 2f;
-    private DateTime lastFoodSpawn = DateTime.Now;
 
     protected ILogger logger;
 
@@ -50,241 +37,94 @@ public class SnakeServer : EntitySystem
         Transport.OnClientDisconnected = OnClientDisconnected;
         Transport.OnMessageReceived = OnMessageReceived;
 
-        Board = new Board(64, 64);
-        Snakes = new List<Snake>();
+        GameMode = new BaseGameMode();
+        GameMode.Clients = clients;
 
-        for (int x = 5; x < 50;  x++)
+        Simulation = new Simulation();
+
+        Simulation.Simulate(() =>
         {
-            Board.SetResource((byte)x, 5, new Tile { Type = TileType.Wall, PlayerId = 0 });
-            Board.SetResource((byte)x, 8, new Tile { Type = TileType.Wall, PlayerId = 0 });
-        }
+            GameMode.Start(Simulation);
+        });
     }
 
     public override void OnUpdate(float deltaTime)
     {
-        if (DateTime.Now - lastMoveTime > TimeSpan.FromSeconds(1.0 / movesPerSecond))
+        if (DateTime.Now - lastNetworkUpdateTime < TimeSpan.FromSeconds(1.0 / gameConfig.TickFrequency))
         {
-            lastMoveTime = DateTime.Now;
-
-            List<Snake> snakes = new List<Snake>(Snakes);
-
-            foreach (Snake snake in snakes)
-            {
-                if (snake.Killed) { continue; }
-
-                MoveSnake(snake);
-            }
+            return;
         }
+        lastNetworkUpdateTime = DateTime.Now;
 
-        if (Snakes.Count > 0 && DateTime.Now - lastFoodSpawn > TimeSpan.FromSeconds(foodSpawnTime))
-        {
-            lastFoodSpawn = DateTime.Now;
-
-            byte x = (byte)Random.Shared.Next(0, Board.Width);
-            byte y = (byte)Random.Shared.Next(0, Board.Height);
-
-            if (Board.GetResource(x, y).Type == TileType.Empty)
-            {
-                Board.SetResource(x, y, new Tile { Type = TileType.Food, PlayerId = 0 });
-                SendBoardMessage(x, y, new Tile { Type = TileType.Food, PlayerId = 0 });
-            }
-        }
-
-        while (respawnQueue.Count > 0)
-        {
-            (NetworkConnection connection, DateTime time) = respawnQueue.Peek();
-
-            if (DateTime.Now > time)
-            {
-                respawnQueue.Dequeue();
-                if (!connection.IsInvalid)
-                {
-                    SpawnClient(connection);
-                }
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        if (DateTime.Now - lastNetworkUpdateTime > TimeSpan.FromSeconds(1.0 / gameConfig.TickFrequency))
+        Simulation.Simulate(() =>
         {
             Transport.Update();
+
+            GameMode.Update();
+
+            // Go through every client and catch them up to the current tick we just simulated
+            foreach (Client client in clients)
+            {
+                if (!client.IsSynced) { continue; } // dont send delta updates to clients that are not synced
+
+                List<TickEvent> eventsToCatchUp = Simulation.Events.FindAll(e => e.Tick > client.LastTick);
+
+                foreach (TickEvent tickEvent in eventsToCatchUp)
+                {
+                    SendEvent(client.Connection, tickEvent);
+                }
+
+                client.LastTick = Simulation.CurrentTick;
+
+                // Update the client's packet serializer
+                if (packetSerializers.ContainsKey(client.Connection))
+                {
+                    packetSerializers[client.Connection].CurrentGameTick = Simulation.CurrentTick;
+                }
+            }
 
             foreach ((NetworkConnection connection, PacketSerializer serializer) in packetSerializers)
             {
                 if (connection.IsInvalid) { continue; }
 
                 IWriteMessage packet = new WriteOnlyMessage();
-                serializer.CurrentGameTick = gameTick;
+                serializer.CurrentGameTick = (byte)(Simulation.CurrentTick % 255);
                 if (serializer.BuildMessage(packet, logger))
                 {
                     logger.LogVerbose($"Sending packet to {connection.Id}: {string.Join(" ", packet.Buffer.Take(packet.LengthBytes).Select(b => b.ToString("X2")))}");
 
                     Transport.SendToClient(packet, connection);
-                    gameTick++;
                 }
             }
-
-            lastNetworkUpdateTime = DateTime.Now;
-        }
+        });
     }
 
-    public void SpawnSnake(byte playerId, byte positionX, byte positionY)
+    public void SendEvent(NetworkConnection connection, TickEvent tickEvent)
     {
-        Snake snake = new Snake();
-        snake.PlayerId = playerId;
-        snake.Input = new PlayerInput();
-        snake.HeadPosition = new Vector2D<byte>(positionX, positionY);
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY + 1 + playerId)));
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY + 2 + playerId)));
-        snake.BodyPositions.Add(new Vector2D<byte>((byte)(positionX), (byte)(positionY + 3 + playerId)));
-
-        Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = playerId });
-        Board.SetResource(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
-        Board.SetResource(snake.BodyPositions[1].X, snake.BodyPositions[1].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
-        Board.SetResource(snake.BodyPositions[2].X, snake.BodyPositions[2].Y, new Tile { Type = TileType.SnakeBody, PlayerId = playerId });
-
-        Snakes.Add(snake);
-    }
-
-    public void KillSnake(Snake snake)
-    {
-        Snakes.Remove(snake);
-        snake.Killed = true;
-
-        foreach (Vector2D<byte> bodyPosition in snake.BodyPositions)
+        switch (tickEvent)
         {
-            if (Random.Shared.Next(0, 100) > 50)
-            {
-                Board.SetResource(bodyPosition.X, bodyPosition.Y, new Tile { Type = TileType.Food, PlayerId = snake.PlayerId });
-                SendBoardMessage(bodyPosition.X, bodyPosition.Y, new Tile { Type = TileType.Food, PlayerId = snake.PlayerId });
-            }
-            else
-            {
-                Board.SetResource(bodyPosition.X, bodyPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-                SendBoardMessage(bodyPosition.X, bodyPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-            }
-        }
-
-        Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-        SendBoardMessage(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-
-        PlayerDied playerDied = new PlayerDied() { PlayerId = snake.PlayerId, RespawnTimeSeconds = (byte)respawnTime };
-        IWriteMessage playerDiedMessage = new WriteOnlyMessage();
-        playerDied.Serialize(playerDiedMessage);
-
-        foreach (NetworkConnection client in clients)
-        {
-            SendToClient(playerDiedMessage, ServerToClient.PlayerDied, client);
-        }
-
-        NetworkConnection connection = clients.Find(client => client.Id == snake.PlayerId);
-
-        if (connection != null)
-        {
-            respawnQueue.Enqueue((connection, DateTime.Now + TimeSpan.FromSeconds(respawnTime)));
-        }
-    }
-
-    private void MoveSnake(Snake snake)
-    {
-        Vector2D<byte> newHeadPosition = snake.HeadPosition;
-
-        switch (snake.Input)
-        {
-            case PlayerInput.Up:
-                newHeadPosition.Y--;
+            case BoardResetEvent boardResetEvent:
+                BoardResetNetMessage boardReset = new BoardResetNetMessage() { Width = boardResetEvent.Width, Height = boardResetEvent.Height };
+                SendToClient(boardReset, ServerToClient.BoardReset, connection);
                 break;
-            case PlayerInput.Down:
-                newHeadPosition.Y++;
+            case BoardSetEvent boardSetEvent:
+                SendBoardMessage(boardSetEvent.X, boardSetEvent.Y, boardSetEvent.Tile);
                 break;
-            case PlayerInput.Left:
-                newHeadPosition.X--;
+            case SnakeMoveEvent snakeMoveEvent:
+                PlayerMovedNetMessage snakeMove = new PlayerMovedNetMessage() { PlayerId = snakeMoveEvent.PlayerId, X = snakeMoveEvent.NewHeadPosition.X, Y = snakeMoveEvent.NewHeadPosition.Y, Grew = snakeMoveEvent.Grew };
+                SendToClient(snakeMove, ServerToClient.PlayerMoved, connection);
                 break;
-            case PlayerInput.Right:
-                newHeadPosition.X++;
+            case SnakeSpawnEvent snakeSpawnEvent:
+                PlayerSpawnedNetMessage playerSpawned = new PlayerSpawnedNetMessage() { PlayerId = connection.Id };
+                SendToClient(playerSpawned, ServerToClient.PlayerSpawned, connection);
+
+                SendBoardMessage(snakeSpawnEvent.X, snakeSpawnEvent.Y, new Tile { Type = TileType.SnakeHead, PlayerId = snakeSpawnEvent.PlayerId });
+                SendBoardMessage(snakeSpawnEvent.X, (byte)(snakeSpawnEvent.Y + 1), new Tile { Type = TileType.SnakeBody, PlayerId = snakeSpawnEvent.PlayerId });
                 break;
-        }
-
-        // Check if the new head position is out of bounds and teleport the snake to the other side of the board
-        if (newHeadPosition.X <= 0)
-        {
-            newHeadPosition.X = (byte)(Board.Width - 1);
-        }
-        else if (newHeadPosition.X >= Board.Width)
-        {
-            newHeadPosition.X = 0;
-        }
-
-        if (newHeadPosition.Y <= 0)
-        {
-            newHeadPosition.Y = (byte)(Board.Height - 1);
-        }
-        else if (newHeadPosition.Y >= Board.Height)
-        {
-            newHeadPosition.Y = 0;
-        }
-
-        // Check if the head position will end up in another snake
-        foreach (Snake otherSnake in Snakes)
-        {
-            //if (otherSnake.PlayerId == snake.PlayerId) { continue; }
-
-            if (otherSnake.HeadPosition == newHeadPosition)
-            {
-                // Kill both snakes
-                KillSnake(snake);
-                KillSnake(otherSnake);
-                return;
-            }
-
-            if (otherSnake.BodyPositions.Contains(newHeadPosition))
-            {
-                // Kill the snake
-                KillSnake(snake);
-                return;
-            }
-        }
-
-        bool grow = false;
-
-        // Check if the head position will end up in food
-        Tile tile = Board.GetResource(newHeadPosition.X, newHeadPosition.Y);
-        if (tile.Type == TileType.Food)
-        {
-            grow = true;
-        }
-        else if (tile.Type == TileType.Wall)
-        {
-            KillSnake(snake);
-            return;
-        }
-
-        snake.BodyPositions.Insert(0, snake.HeadPosition);
-        snake.HeadPosition = newHeadPosition;
-
-        Board.SetResource(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = snake.PlayerId });
-        Board.SetResource(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = snake.PlayerId });
-
-        SendBoardMessage(snake.HeadPosition.X, snake.HeadPosition.Y, new Tile { Type = TileType.SnakeHead, PlayerId = snake.PlayerId });
-        SendBoardMessage(snake.BodyPositions[0].X, snake.BodyPositions[0].Y, new Tile { Type = TileType.SnakeBody, PlayerId = snake.PlayerId });
-
-        if (!grow)
-        {
-            int indexToRemove = snake.BodyPositions.Count - 1;
-            Board.SetResource(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-            SendBoardMessage(snake.BodyPositions[indexToRemove].X, snake.BodyPositions[indexToRemove].Y, new Tile { Type = TileType.Empty, PlayerId = 0 });
-            snake.BodyPositions.RemoveAt(indexToRemove);
-        }
-
-        IWriteMessage playerMovedMessage = new WriteOnlyMessage();
-        PlayerMoved playerMoved = new PlayerMoved() { Grew = grow, PlayerId = snake.PlayerId, X = snake.HeadPosition.X, Y = snake.HeadPosition.Y };
-        playerMoved.Serialize(playerMovedMessage);
-        foreach (NetworkConnection client in clients)
-        {
-            SendToClient(playerMovedMessage, ServerToClient.PlayerMoved, client);
+            case SnakeKillEvent snakeKillEvent:
+                PlayerDiedNetMessage playerDied = new PlayerDiedNetMessage() { PlayerId = snakeKillEvent.PlayerId, RespawnTimeSeconds = 5 };
+                SendToClient(playerDied, ServerToClient.PlayerDied, connection);
+                break;
         }
     }
 
@@ -318,28 +158,29 @@ public class SnakeServer : EntitySystem
         packetSerializers[connection].QueueMessage(message, type);
     }
 
-    public void OnClientConnected(NetworkConnection connection)
+    public void SendToClient(NetMessage message, ServerToClient type, NetworkConnection connection)
+    {
+        IWriteMessage writeMessage = new WriteOnlyMessage();
+        message.Serialize(writeMessage);
+        SendToClient(writeMessage, type, connection);
+    }
+
+    private void OnClientConnected(NetworkConnection connection)
     {
         packetSerializers[connection] = new PacketSerializer();
 
         logger.LogInfo($"Client connected: {connection.Id}");
     }
 
-    public void OnClientDisconnected(NetworkConnection connection, DisconnectReason reason)
+    private void OnClientDisconnected(NetworkConnection connection, DisconnectReason reason)
     {
         logger.LogInfo($"Client disconnected: {connection.Id}");
 
         packetSerializers.Remove(connection);
-        clients.Remove(connection);
-
-        // Kill all snakes belonging to the disconnected client
-        foreach (Snake snake in Snakes.FindAll(snake => snake.PlayerId == connection.Id))
-        {
-            KillSnake(snake);
-        }
+        clients.RemoveAll(c => c.Connection == connection);
     }
 
-    public void OnMessageReceived(IReadMessage incomingMessage)
+    private void OnMessageReceived(IReadMessage incomingMessage)
     {
         logger.LogVerbose($"Message received from {incomingMessage.Sender.Id}");
         logger.LogVerbose(string.Join(" ", incomingMessage.Buffer.Take(incomingMessage.LengthBytes).Select(b => b.ToString("X2"))));
@@ -381,7 +222,7 @@ public class SnakeServer : EntitySystem
         }, logger);
     }
 
-    public void SendBoardMessage(byte x, byte y, Tile tile)
+    private void SendBoardMessage(byte x, byte y, Tile tile)
     {
         IWriteMessage boardSetMessage = new WriteOnlyMessage();
 
@@ -398,9 +239,9 @@ public class SnakeServer : EntitySystem
 
         cellData.Serialize(boardSetMessage);
 
-        foreach (NetworkConnection client in clients)
+        foreach (Client client in clients)
         {
-            SendToClient(boardSetMessage, ServerToClient.BoardSet, client);
+            SendToClient(boardSetMessage, ServerToClient.BoardSet, client.Connection);
         }
     }
 
@@ -429,15 +270,19 @@ public class SnakeServer : EntitySystem
 
     private void HandleConnecting(IReadMessage message)
     {
-        if (clients.Contains(message.Sender))
+        if (clients.Select(c => c.Connection).Contains(message.Sender))
         {
             return;
         }
 
-        Connecting connecting = new Connecting();
+        ConnectingNetMessage connecting = new ConnectingNetMessage();
         connecting.Deserialize(message);
 
-        clients.Add(message.Sender);
+        clients.Add(new Client
+        {
+            Connection = message.Sender,
+            Name = message.Sender.Id.ToString(),
+        });
 
         logger.LogInfo($"Received connecting package {connecting} from {message.Sender}");
 
@@ -458,28 +303,26 @@ public class SnakeServer : EntitySystem
         IWriteMessage playerRenamedMessage = new WriteOnlyMessage();
         playerRenamed.Serialize(playerRenamedMessage);
 
-        foreach (NetworkConnection client in clients)
+        foreach (Client client in clients)
         {
-            SendToClient(playerConnectedMessage, ServerToClient.PlayerConnected, client);
-            SendToClient(playerRenamedMessage, ServerToClient.PlayerRenamed, client);
+            SendToClient(playerConnectedMessage, ServerToClient.PlayerConnected, client.Connection);
+            SendToClient(playerRenamedMessage, ServerToClient.PlayerRenamed, client.Connection);
         }
     }
 
     private void HandleFullUpdate(IReadMessage message)
     {
-        BoardReset boardReset = new BoardReset() { Width = Board.Width, Height = Board.Height };
-        IWriteMessage boardResetMessage = new WriteOnlyMessage();
-        boardReset.Serialize(boardResetMessage);
-        SendToClient(boardResetMessage, ServerToClient.BoardReset, message.Sender);
+        // Send the newest board state to the client
+        BoardResetNetMessage boardReset = new BoardResetNetMessage() { Width = Simulation.State.Board.Width, Height = Simulation.State.Board.Height };
+        SendToClient(boardReset, ServerToClient.BoardReset, message.Sender);
 
-        // Board Set
-        for (byte x = 0; x < Board.Width; x++)
+        for (byte x = 0; x < Simulation.State.Board.Width; x++)
         {
-            for (byte y = 0; y < Board.Height; y++)
+            for (byte y = 0; y < Simulation.State.Board.Height; y++)
             {
                 IWriteMessage boardSetMessage = new WriteOnlyMessage();
 
-                Tile tile = Board.GetResource(x, y);
+                Tile tile = Simulation.State.Board.GetResource(x, y);
 
                 if (tile.Type == TileType.Empty) { continue; }
 
@@ -500,9 +343,9 @@ public class SnakeServer : EntitySystem
         }
 
         // PlayerConnected
-        foreach (NetworkConnection client in clients)
+        foreach (Client client in clients)
         {
-            if (client == message.Sender) { continue; }
+            if (client.Connection == message.Sender) { continue; }
 
             PlayerConnected playerConnected = new PlayerConnected() { PlayerId = client.Id };
             IWriteMessage playerConnectedMessage = new WriteOnlyMessage();
@@ -516,9 +359,9 @@ public class SnakeServer : EntitySystem
         }
 
         // PlayerSpawned
-        foreach (Snake snake in Snakes)
+        foreach (Snake snake in Simulation.State.Snakes)
         {
-            PlayerSpawned playerSpawned = new PlayerSpawned() { PlayerId = snake.PlayerId };
+            PlayerSpawnedNetMessage playerSpawned = new PlayerSpawnedNetMessage() { PlayerId = snake.PlayerId };
             IWriteMessage playerSpawnedMessage = new WriteOnlyMessage();
             playerSpawned.Serialize(playerSpawnedMessage);
             SendToClient(playerSpawnedMessage, ServerToClient.PlayerSpawned, message.Sender);
@@ -527,46 +370,23 @@ public class SnakeServer : EntitySystem
         // RespawnAllowed
         SendToClient(new WriteOnlyMessage(), ServerToClient.RespawnAllowed, message.Sender);
 
+        Client syncingClient = clients.Where(c => c.Connection == message.Sender).First();
+        syncingClient.IsSynced = true;
+        syncingClient.LastTick = Simulation.CurrentTick;
+
         logger.LogInfo($"Sent full update to {message.Sender}");
-    }
-
-    private void SpawnClient(NetworkConnection connection)
-    {
-        // Check if snake is already in the game
-        if (Snakes.Any(snake => snake.PlayerId == connection.Id))
-        {
-            return;
-        }
-
-        SpawnSnake(connection.Id, 25, 25);
-
-        PlayerSpawned playerSpawned = new PlayerSpawned() { PlayerId = connection.Id };
-        IWriteMessage playerSpawnedMessage = new WriteOnlyMessage();
-        playerSpawned.Serialize(playerSpawnedMessage);
-        SendToClient(playerSpawnedMessage, ServerToClient.PlayerSpawned, connection);
-
-        logger.LogInfo($"Spawned snake for client {connection}");
     }
 
     private void HandlePlayerInput(IReadMessage message)
     {
         byte input = message.ReadByte();
 
-        if (input > 5) { return; }
-
         PlayerInput playerInput = (PlayerInput)input;
 
-        if (playerInput == PlayerInput.Respawn)
+        Client client = clients.Where(c => c.Connection == message.Sender).First();
+        if (client != null)
         {
-            SpawnClient(message.Sender);
-        }
-        else
-        {
-            Snake? snake = Snakes.Find(snake => snake.PlayerId == message.Sender.Id);
-
-            if (snake == null) { return; }
-
-            snake.Input = (PlayerInput)input;
+            GameMode.ReceiveInput(client, playerInput);
         }
     }
 
@@ -580,6 +400,14 @@ public class SnakeServer : EntitySystem
         ChangeName changeName = new ChangeName();
         changeName.Deserialize(message);
         logger.LogInfo($"Received name change to {message.Sender}: {changeName}");
+
+        foreach (Client client in clients)
+        {
+            if (client.Connection == message.Sender)
+            {
+                client.Name = changeName.NewName;
+            }
+        }
     }
 
     private void HandleSendChatMessage(IReadMessage message)
@@ -592,9 +420,9 @@ public class SnakeServer : EntitySystem
         IWriteMessage chatMessageResponseMessage = new WriteOnlyMessage();
         chatMessageResponse.Serialize(chatMessageResponseMessage);
 
-        foreach (NetworkConnection client in clients)
+        foreach (Client client in clients)
         {
-            SendToClient(chatMessageResponseMessage, ServerToClient.ChatMessageSent, client);
+            SendToClient(chatMessageResponseMessage, ServerToClient.ChatMessageSent, client.Connection);
         }
     }
 }

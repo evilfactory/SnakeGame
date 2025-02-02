@@ -134,14 +134,6 @@ public class BaseGameMode : GameMode, IReceiveClientInput
         // Check if the head position will end up in another snake
         foreach (Snake otherSnake in Sim.State.Snakes)
         {
-            if (otherSnake.Positions[0] == newHeadPosition)
-            {
-                KillSnakeAndSpawnFood(snake);
-                KillSnakeAndSpawnFood(otherSnake);
-
-                return;
-            }
-
             if (otherSnake.Positions.Contains(newHeadPosition))
             {
                 KillSnakeAndSpawnFood(snake);

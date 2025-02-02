@@ -133,7 +133,6 @@ public class SnakeServer : EntitySystem
                 SendToClient(playerSpawned, ServerToClient.PlayerSpawned, connection);
 
                 SendBoardMessage(snakeSpawnEvent.X, snakeSpawnEvent.Y, new Tile { Type = TileType.SnakeHead, PlayerId = snakeSpawnEvent.PlayerId });
-                SendBoardMessage(snakeSpawnEvent.X, (byte)(snakeSpawnEvent.Y + 1), new Tile { Type = TileType.SnakeBody, PlayerId = snakeSpawnEvent.PlayerId });
                 break;
             case SnakeKillEvent snakeKillEvent:
                 PlayerDiedNetMessage playerDied = new PlayerDiedNetMessage() { PlayerId = snakeKillEvent.PlayerId, RespawnTimeSeconds = 5 };

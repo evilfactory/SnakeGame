@@ -21,12 +21,12 @@ public class BaseGameMode : GameMode, IReceiveClientInput
     {
         Sim = simulation;
 
-        Sim.PushEvent(new BoardResetEvent() { Width = 64, Height = 64 });
+        Sim.PushEvent(new BoardResetEvent() { Width = 32, Height = 32 });
     }
 
     public override void Update()
     {
-        if (Sim.CurrentTick % 1 == 0)
+        if (Sim.CurrentTick % 2 == 0)
         {
             for (int i = 0; i < Sim.State.Snakes.Count; i++)
             {

@@ -82,13 +82,11 @@ public class SnakeSpawnEvent : TickEvent
             PlayerId = PlayerId,
             Positions = new List<Vector2D<byte>>()
             {
-                new Vector2D<byte>(X, Y),
-                new Vector2D<byte>(X, (byte)(Y + 1))
+                new Vector2D<byte>(X, Y)
             }
         });
 
         state.Board.SetResource(X, Y, new Tile() { Type = TileType.SnakeHead, PlayerId = PlayerId });
-        state.Board.SetResource(X, (byte)(Y + 1), new Tile() { Type = TileType.SnakeBody, PlayerId = PlayerId });
     }
 }
 

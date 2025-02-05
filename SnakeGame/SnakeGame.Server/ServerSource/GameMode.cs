@@ -34,13 +34,23 @@ public class BaseGameMode : GameMode, IReceiveClientInput
             }
         }
 
-        if (Sim.CurrentTick % 10 == 0)
+        if (Sim.CurrentTick % 100 == 0)
         {
             byte x = (byte)Random.Shared.Next(0, Sim.State.Board.Width);
             byte y = (byte)Random.Shared.Next(0, Sim.State.Board.Height);
             if (Sim.State.Board.GetResource(x, y).Type == TileType.Empty)
             {
                 Sim.PushEvent(new BoardSetEvent() { X = x, Y = y, Tile = new Tile() { Type = TileType.Food, PlayerId = 0 } });
+            }
+        }
+
+        if (Sim.CurrentTick % 200 == 0)
+        {
+            byte x = (byte)Random.Shared.Next(0, Sim.State.Board.Width);
+            byte y = (byte)Random.Shared.Next(0, Sim.State.Board.Height);
+            if (Sim.State.Board.GetResource(x, y).Type == TileType.Empty)
+            {
+                Sim.PushEvent(new BoardSetEvent() { X = x, Y = y, Tile = new Tile() { Type = TileType.Wall, PlayerId = 0 } });
             }
         }
 
@@ -116,16 +126,6 @@ public class BaseGameMode : GameMode, IReceiveClientInput
         newHeadPosition.Y = (byte)(newHeadPosition.Y % Sim.State.Board.Height);
 
 
-        // Check if the head position will end up in another snake
-        foreach (Snake otherSnake in Sim.State.Snakes)
-        {
-            if (otherSnake.Positions.Contains(newHeadPosition))
-            {
-                KillSnakeAndSpawnFood(snake);
-                return;
-            }
-        }
-
         bool grow = false;
 
         // Check if the head position will end up in food
@@ -134,9 +134,9 @@ public class BaseGameMode : GameMode, IReceiveClientInput
         {
             grow = true;
         }
-        else if (tile.Type == TileType.Wall)
+        else if (tile.Type == TileType.Wall || tile.Type == TileType.SnakeBody || tile.Type == TileType.SnakeHead)
         {
-            Sim.PushEvent(new SnakeKillEvent() { PlayerId = snake.PlayerId });
+            KillSnakeAndSpawnFood(snake);
             return;
         }
 

@@ -96,6 +96,11 @@ partial class TcpTransport : Transport
 
     public override void DisconnectClient(NetworkConnection connection, DisconnectReason reason)
     {
+        if (connection.IsInvalid || !clients.ContainsKey(connection.Id))
+        {
+            return;
+        }
+
         TcpClient client = clients[connection.Id];
 
         client.Close();

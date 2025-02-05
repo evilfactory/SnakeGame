@@ -22,6 +22,15 @@ public class BaseGameMode : GameMode, IReceiveClientInput
         Sim = simulation;
 
         Sim.PushEvent(new BoardResetEvent() { Width = 32, Height = 32 });
+
+        for (byte x = 5; x < 25; x++)
+        {
+            Sim.PushEvent(new BoardSetEvent() { X = x, Y = 5, Tile = new Tile() { PlayerId = 0, Type = TileType.Wall } });
+            Sim.PushEvent(new BoardSetEvent() { X = x, Y = 8, Tile = new Tile() { PlayerId = 0, Type = TileType.Wall } });
+
+            Sim.PushEvent(new BoardSetEvent() { X = x, Y = 24, Tile = new Tile() { PlayerId = 0, Type = TileType.Wall } });
+            Sim.PushEvent(new BoardSetEvent() { X = x, Y = 27, Tile = new Tile() { PlayerId = 0, Type = TileType.Wall } });
+        }
     }
 
     public override void Update()
@@ -41,16 +50,6 @@ public class BaseGameMode : GameMode, IReceiveClientInput
             if (Sim.State.Board.GetResource(x, y).Type == TileType.Empty)
             {
                 Sim.PushEvent(new BoardSetEvent() { X = x, Y = y, Tile = new Tile() { Type = TileType.Food, PlayerId = 0 } });
-            }
-        }
-
-        if (Sim.CurrentTick % 200 == 0)
-        {
-            byte x = (byte)Random.Shared.Next(0, Sim.State.Board.Width);
-            byte y = (byte)Random.Shared.Next(0, Sim.State.Board.Height);
-            if (Sim.State.Board.GetResource(x, y).Type == TileType.Empty)
-            {
-                Sim.PushEvent(new BoardSetEvent() { X = x, Y = y, Tile = new Tile() { Type = TileType.Wall, PlayerId = 0 } });
             }
         }
 

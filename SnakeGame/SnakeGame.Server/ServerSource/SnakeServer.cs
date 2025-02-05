@@ -393,7 +393,7 @@ public class SnakeServer : EntitySystem
 
         PlayerInput playerInput = (PlayerInput)input;
 
-        Client client = clients.Where(c => c.Connection == message.Sender).First();
+        Client client = clients.Where(c => c.Connection == message.Sender).FirstOrDefault();
         if (client != null)
         {
             EventSystem.PublishEvent<IReceiveClientInput>(x => x.ReceiveInput(client, playerInput));
